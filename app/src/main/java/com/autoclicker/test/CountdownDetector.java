@@ -26,6 +26,6 @@ public final class CountdownDetector {
     }
 
     private String normalize(String value) {
-        return value == null ? "" : value.trim().replaceAll("\s+", "");
+        return value == null ? "" : value.trim().replaceAll("\\s+", "");
     }
 }
