@@ -41,16 +41,28 @@ public class MainActivity extends Activity {
         root.addView(title);
 
         root.addView(text(
-                "For your own app/testing app. The automation reads the countdown as accessibility text. " +
-                "When the text is EXACTLY 15, it clicks Target B.", 15));
+                "Installation uses no normal runtime permission. After installation, Android will ask you to explicitly enable the Accessibility Service in Settings. " +
+                "The service is used only for your selected test app.", 15));
+
+        TextView rule = text(
+                "AUTOMATION RULE\n\n" +
+                "Countdown == 15\n" +
+                "        ↓\n" +
+                "Click Target B\n" +
+                "        ↓\n" +
+                "Wait 22 seconds\n" +
+                "        ↓\n" +
+                "Click Target B again", 17);
+        rule.setTextColor(Color.DKGRAY);
+        root.addView(rule);
 
         Button access = new Button(this);
-        access.setText("Enable Accessibility Service");
+        access.setText("1. Enable Accessibility Service");
         access.setOnClickListener(v ->
                 startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         root.addView(access);
 
-        root.addView(text("Installed apps", 19));
+        root.addView(text("2. Select your test app", 19));
 
         Spinner spinner = new Spinner(this);
         loadApps(spinner);
@@ -58,18 +70,18 @@ public class MainActivity extends Activity {
 
         EditText trigger = new EditText(this);
         trigger.setInputType(2);
-        trigger.setHint("Countdown trigger");
+        trigger.setHint("3. Countdown trigger (exact text)");
         trigger.setText("15");
         root.addView(trigger);
 
         EditText delay = new EditText(this);
         delay.setInputType(2);
-        delay.setHint("Second click delay (seconds)");
+        delay.setHint("4. Second click delay (seconds)");
         delay.setText("22");
         root.addView(delay);
 
         Button launch = new Button(this);
-        launch.setText("Launch Selected App");
+        launch.setText("5. Launch Selected App");
         root.addView(launch);
 
         Button target = new Button(this);
@@ -84,7 +96,7 @@ public class MainActivity extends Activity {
         root.addView(target);
 
         Button start = new Button(this);
-        start.setText("START AUTOMATION");
+        start.setText("6. START AUTOMATION");
         start.setOnClickListener(v -> {
             if (AutomationAccessibilityService.instance == null) {
                 toast("Enable Accessibility Service first.");
