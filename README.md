@@ -1,113 +1,101 @@
-# Auto Clicker Test
+# Auto Clicker Test — Virtual Test APK
 
-A user-controlled Android automation/testing controller for a selected installed test application.
+This repository contains a **self-contained Android automation test environment**.
 
-## Fixed automation logic
+The current build does **not** inspect another app, capture the screen, draw overlays, use AccessibilityService, or request special Android permissions.
 
-The APK now has a simple fixed workflow. No trigger value, timing value, keystore value, password, or signing key is required from the user.
+## Current automation flow
 
-1. Select an installed test app.
-2. Enable the controller's Accessibility Service in Android Settings.
-3. Launch the selected app.
-4. Use the floating **A** button.
-5. Choose **CALIBRATE TARGET A** and tap Target A.
-6. Choose **CALIBRATE TARGET B** and tap Target B.
-7. Choose **ACTIVE**.
-8. The controller watches only the selected package.
-9. When the accessible countdown is exactly **15**, it clicks **Target B**.
-10. It waits exactly **22 seconds**.
-11. It clicks **Target A**.
-12. The cycle finishes.
-13. It will not trigger again while the same 15 remains visible. It must disappear and be detected again before another cycle.
+The APK contains its own virtual countdown and its own Target A / Target B controls.
 
-The trigger is fixed to exactly 15. The delay is fixed to exactly 22 seconds.
+1. Open **Auto Clicker Test**.
+2. Tap **ACTIVATE AUTOMATION**.
+3. The virtual countdown runs from 30 down to 0 and repeats.
+4. When the countdown is **exactly 15**, the controller clicks **Target B**.
+5. The controller waits **22 seconds**.
+6. The controller clicks **Target A**.
+7. It returns to waiting for the next 15.
+8. A repeated observation of the same visible 15 cannot trigger another cycle. The value must become something other than 15 and later become 15 again.
+9. **STOP AUTOMATION** cancels the active cycle, including a pending Target A click.
+10. **RESET COUNTDOWN** resets the virtual countdown to 30 and resets the automation state.
 
-## Target clicking
+This is intentionally a deterministic test environment. It is not a cross-app clicker.
 
-For each target, the service first tries accessible controls named Target A / Target B or target_a / target_b.
+## Project structure
 
-If the selected test app does not expose those controls through Accessibility, use the floating calibration buttons. The controller stores the screen coordinates locally and uses Android accessibility gesture dispatch.
+- `MainActivity.java` — launcher entry point; opens the virtual test activity.
+- `VirtualTestActivity.java` — owns the virtual countdown, Target A/B buttons, and user controls.
+- `AutomationController.java` — deterministic state machine for 15 → B → 22 seconds → A.
+- `AutomationState.java` — controller states.
+- `AutomationControllerTest.java` — JVM tests for repeated-15 protection, 22-second scheduling, Target A completion, STOP cancellation, and failed-click recovery.
+- `AndroidManifest.xml` — contains only the two activities; no permissions or services.
+- `android.yml` — builds, lints, signs, and inspects the debug APK.
 
-## Countdown detection
+## Permissions
 
-The current build uses the Accessibility UI tree to find an exact text/content-description value of 15.
+The current manifest intentionally declares **no Android permissions**.
 
-If the countdown is drawn only as pixels by a custom Canvas/OpenGL surface and is not exposed to Accessibility, this build cannot read the number from the screen. In that case the target app should expose the countdown as an accessibility-visible text/content description, or a separate test-only visual/OCR implementation would be needed.
+There is no:
 
-## Controls
+- AccessibilityService
+- `BIND_ACCESSIBILITY_SERVICE`
+- `SYSTEM_ALERT_WINDOW`
+- screen capture
+- foreground service
+- external-app inspection
+- special permission setup
 
-Main controller:
+The CI build also checks the generated APK for stale accessibility/overlay classes and restricted permissions.
 
-- Select installed app
-- Refresh apps
-- Launch selected app
-- Enable Accessibility
-- Activate automation
-- Stop automation
+## Build configuration
 
-Floating controller:
+- compileSdk: 35
+- targetSdk: 35
+- minSdk: 26
+- applicationId: `com.autoclicker.virtualtest`
+- versionName: `5.2`
+- Android Gradle Plugin: 8.7.3
+- Gradle: 8.9
+- Java: 17
 
-- ACTIVE / STOP
-- STOP ALL ACTIVE
-- CALIBRATE TARGET A
-- CALIBRATE TARGET B
-- Accessibility Settings
-- CLOSE
+AGP 8.7 supports API 35 with Gradle 8.9 and JDK 17. citeturn0search0
 
-Automation remains off until the user explicitly activates it.
+The project intentionally produces a debug APK, so no personal release keystore or signing password is required.
 
-## Build and installation
+## Android 15 / API 35 UI handling
 
-This repository intentionally uses a debug-only APK workflow for testing.
+Because the app targets SDK 35, Android 15 enforces edge-to-edge behavior. The virtual activity applies system-bar insets to keep its controls tappable and visible. citeturn3search0turn3search2
 
-There are no:
+## CI verification
 
-- RELEASE_KEYSTORE_BASE64
-- RELEASE_KEYSTORE_PASSWORD
-- RELEASE_KEY_ALIAS
-- RELEASE_KEY_PASSWORD
-- release keystore files
-- release signing setup
+Every push to `main` and every manual workflow run performs:
 
-Every push to main, and every manual workflow run, builds:
+1. Gradle/JDK/SDK checks.
+2. JVM unit tests.
+3. Android lint.
+4. Clean debug APK build.
+5. APK signing verification.
+6. APK package/version/launcher verification.
+7. Permission inspection.
+8. Stale accessibility/overlay class inspection.
+9. APK artifact upload.
 
-app/build/outputs/apk/debug/app-debug.apk
+Artifact name:
 
-GitHub Actions uploads it as the AutoClicker-debug-v3.2 artifact.
+`AutoClicker-Portable-Virtual-v5.2`
 
-Android debug builds use the standard debug signing setup, so no personal signing key is required for this test build.
+## Installation
 
-For local installation with Android tools:
+After a successful GitHub Actions build, download the APK artifact and install it on an Android device.
+
+For ADB installation:
 
 ~~~text
 adb install app-debug.apk
 ~~~
 
-## Android permissions and security
+If an older build with a different package ID is installed, it can coexist with this virtual-test package because the current package ID is `com.autoclicker.virtualtest`.
 
-The controller uses Android AccessibilityService because cross-app UI inspection and gesture dispatch require an Android-supported accessibility mechanism.
+## Important limitation
 
-The user must explicitly enable the service in Android Settings.
-
-Do not disable or bypass Android security protections to install the APK.
-
-If the selected app does not expose its countdown through Accessibility, the fixed automation cannot reliably detect 15 with this build.
-
-## Testing sequence
-
-After installing:
-
-1. Open Auto Clicker Test.
-2. Tap ENABLE ACCESSIBILITY.
-3. Enable Auto Clicker Test in Android Accessibility Settings.
-4. Return to the controller.
-5. Select the test app.
-6. Tap LAUNCH SELECTED APP.
-7. Open the floating A button.
-8. Calibrate Target A.
-9. Calibrate Target B.
-10. Tap ACTIVE.
-11. Test the countdown: 15 -> B -> 22 seconds -> A.
-12. Tap STOP to cancel automation.
-
-This repository build is intended for testing an app you control or are authorized to test.
+This version deliberately does **not** automate another installed application. Its targets and countdown are internal controls owned by this APK. A cross-app implementation would require Android-supported mechanisms such as UI Automator or an appropriate accessibility/test framework and is outside this virtual build.
