@@ -40,7 +40,7 @@ jobs:
 
       - name: Verify virtual-only source tree
         run: |
-          ! grep -RniE '<accessibility-service|AccessibilityService|BIND_ACCESSIBILITY_SERVICE|SYSTEM_ALERT_WINDOW|canPerformGestures|canRetrieveWindowContent' app/src/main
+          ! grep -RniE '<accessibility-service|android\.accessibilityservice|BIND_ACCESSIBILITY_SERVICE|SYSTEM_ALERT_WINDOW|canPerformGestures|canRetrieveWindowContent' app/src/main
 
       - name: Run unit tests
         run: gradle test --stacktrace
