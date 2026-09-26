@@ -58,13 +58,13 @@ The CI build also checks the generated APK for stale accessibility/overlay class
 - Gradle: 8.9
 - Java: 17
 
-AGP 8.7 supports API 35 with Gradle 8.9 and JDK 17. citeturn0search0
+AGP 8.7 supports API 35 with Gradle 8.9 and JDK 17.
 
 The project intentionally produces a debug APK, so no personal release keystore or signing password is required.
 
 ## Android 15 / API 35 UI handling
 
-Because the app targets SDK 35, Android 15 enforces edge-to-edge behavior. The virtual activity applies system-bar insets to keep its controls tappable and visible. citeturn3search0turn3search2
+Because the app targets SDK 35, Android 15 enforces edge-to-edge behavior. The virtual activity applies system-bar insets to keep its controls tappable and visible.
 
 ## CI verification
 
