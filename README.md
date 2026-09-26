@@ -1,56 +1,57 @@
 # Auto Clicker Test
 
-A safe Android self-test APK for validating a simple timed click workflow inside its own UI.
+A user-controlled Android automation/testing controller for a selected installed test application.
 
-## Main logic
+## Exact workflow
+1. User selects an installed app.
+2. User launches that app from this controller.
+3. User explicitly enables the Accessibility Service in Android Settings.
+4. The floating A icon is available over the selected app.
+5. User opens the menu and taps ACTIVE.
+6. The service watches only the selected package.
+7. When an accessible countdown value is exactly 15, it clicks Target B.
+8. It waits 22 seconds.
+9. It clicks Target A.
+10. The cycle ends.
 
-1. The countdown runs normally.
-2. When the countdown is exactly **15**, the app automatically clicks **Target B**.
-3. It waits **22 seconds**.
-4. It automatically clicks **Target A**.
-5. The cycle finishes and does not repeatedly trigger while the countdown remains 15.
+The trigger is exact: 15 triggers; 115, 150, and 15.0 do not.
 
-Exact matching is intentional:
+## Target clicking reliability
+The service tries Target A/B in this order:
+1. Exact accessibility text/content description.
+2. target_a / target_b accessibility description.
+3. A user-calibrated screen coordinate.
 
-- 15 -> triggers
-- 115 -> does not trigger
-- 150 -> does not trigger
-- 15.0 -> does not trigger
+If the target app is a custom Canvas/OpenGL/game surface and does not expose accessible controls, use the floating menu:
+- CALIBRATE TARGET A
+- CALIBRATE TARGET B
 
-## Safe installation design
+Tap the exact target location once. The coordinates are saved locally and used with Android accessibility gesture dispatch.
 
-This version does not use:
+## Important countdown requirement
+For the most reliable trigger, the target app should expose the countdown as an accessibility text node. If the countdown is only pixels inside a Canvas/OpenGL surface, the service cannot read the number directly from the accessibility tree. This build deliberately does not use screen recording or OCR.
 
-- AccessibilityService
-- SYSTEM_ALERT_WINDOW
-- MediaProjection/screen capture
-- OCR
-- external-app automation
-- special Android permissions
+For an app you control, expose the countdown with an accessibility-visible TextView/content description and expose Target A/Target B with stable text/content descriptions.
 
-It is a normal APK that installs and runs as a regular application.
+## User control
+The controller provides:
+- Installed-app selection
+- Launch selected app
+- Accessibility disclosure before enabling
+- ACTIVE
+- STOP
+- STOP ALL ACTIVE
+- Target A calibration
+- Target B calibration
+- Accessibility Settings
 
-## How to test
+Automation stays off until the user activates it.
 
-1. Install the APK normally.
-2. Open **Auto Clicker Test**.
-3. Leave the starting countdown at **30**.
-4. Tap **START TEST**.
-5. Watch the countdown reach **15**.
-6. At exactly **15**, Target B is clicked automatically.
-7. After **22 seconds**, Target A is clicked automatically.
-8. Check the event log.
+## Accessibility disclosure
+This app uses Android AccessibilityService to inspect the selected test app's visible accessibility tree and perform the explicitly configured click sequence. It does not record the screen, upload accessibility data, or make decisions outside the fixed user-defined rule.
 
-You can turn **AUTOMATION** off to verify that automatic actions stop.
-
-## Important
-
-This build intentionally tests the logic inside this APK. It does not control arbitrary third-party applications. That keeps installation simple and avoids sensitive Android automation permissions.
+If distributed through Google Play, complete the applicable AccessibilityService declaration and disclosure/consent requirements. Do not falsely declare this as an accessibility tool unless its primary purpose actually qualifies as disability assistance.
 
 ## Build
-
-Run:
-
-`gradle assembleDebug`
-
-The GitHub Actions workflow uploads the resulting debug APK as **AutoClicker-debug-apk**.
+Run: gradle assembleDebug
+GitHub Actions uploads the debug APK as AutoClicker-debug-apk.
