@@ -3,9 +3,12 @@ package com.autoclicker.test;
 import android.app.Activity;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.view.View;
+import android.view.WindowInsets;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -51,6 +54,20 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
         root.setPadding(28, 28, 28, 28);
+        root.setOnApplyWindowInsetsListener((View v, WindowInsets insets) -> {
+            int top;
+            int bottom;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
+                top = bars.top;
+                bottom = bars.bottom;
+            } else {
+                top = insets.getSystemWindowInsetTop();
+                bottom = insets.getSystemWindowInsetBottom();
+            }
+            v.setPadding(28, 28 + top, 28, 28 + bottom);
+            return insets;
+        });
 
         TextView title = new TextView(this);
         title.setText("AUTO CLICKER — VIRTUAL TEST");
@@ -118,6 +135,7 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
         root.addView(reset);
 
         setContentView(root);
+        root.requestApplyInsets();
     }
 
     private void startVirtualCountdown() {
