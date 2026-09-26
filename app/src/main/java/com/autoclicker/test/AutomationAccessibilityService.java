@@ -1,6 +1,7 @@
 package com.autoclicker.test;
 
 import android.accessibilityservice.AccessibilityService;
+import android.accessibilityservice.GestureDescription;
 import android.graphics.Color;
 import android.graphics.Path;
 import android.graphics.Rect;
