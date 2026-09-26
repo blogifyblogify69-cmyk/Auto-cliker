@@ -28,6 +28,9 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      - name: Run unit tests
+        run: gradle test --stacktrace
+
       - name: Build debug APK
         run: gradle clean assembleDebug --stacktrace
 
@@ -37,5 +40,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AutoClicker-debug-v3.3
+          name: AutoClicker-debug-v3.4
           path: app/build/outputs/apk/debug/app-debug.apk
