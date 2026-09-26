@@ -35,6 +35,7 @@ public class AutomationAccessibilityService extends AccessibilityService {
     public static final String KEY_TARGET_B_TEXT = "target_b_text";
     public static final String KEY_TRIGGER = "trigger_text";
 
+    private static final String FIXED_TRIGGER = "15";
     private static final long SECOND_DELAY_MS = 22_000L;
     private static final long RETRY_DELAY_MS = 350L;
     private static final int MAX_ATTEMPTS = 3;
@@ -62,6 +63,7 @@ public class AutomationAccessibilityService extends AccessibilityService {
 
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
         if (!isActive() || prefs == null) return;
+
         String selected = prefs.getString(KEY_PACKAGE, "");
         String pkg = event.getPackageName() == null ? "" : event.getPackageName().toString();
         if (selected.isEmpty() || !selected.equals(pkg)) return;
@@ -75,8 +77,7 @@ public class AutomationAccessibilityService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
 
-        String trigger = normalize(prefs.getString(KEY_TRIGGER, "15"));
-        AccessibilityNodeInfo triggerNode = findExact(root, trigger, true);
+        AccessibilityNodeInfo triggerNode = findExact(root, FIXED_TRIGGER, true);
 
         if (triggerNode != null && !waitingForA && !triggerConsumed) {
             triggerConsumed = true;
@@ -109,10 +110,7 @@ public class AutomationAccessibilityService extends AccessibilityService {
         AccessibilityNodeInfo node = null;
 
         if (root != null) {
-            String configured = target.equals("A")
-                    ? prefs.getString(KEY_TARGET_A_TEXT, "Target A")
-                    : prefs.getString(KEY_TARGET_B_TEXT, "Target B");
-
+            String configured = target.equals("A") ? "Target A" : "Target B";
             node = findExact(root, normalize(configured), true);
             if (node == null) {
                 node = findExact(root, target.equals("A") ? "target_a" : "target_b", true);
@@ -141,7 +139,7 @@ public class AutomationAccessibilityService extends AccessibilityService {
             handler.postDelayed(() -> clickTarget(target, attempt + 1), RETRY_DELAY_MS);
         } else {
             waitingForA = false;
-            message("Target " + target + " not found. Use CALIBRATE TARGET " + target + ".");
+            message("Target " + target + " not configured. Use CALIBRATE TARGET " + target + ".");
         }
     }
 
@@ -180,9 +178,13 @@ public class AutomationAccessibilityService extends AccessibilityService {
             @Override public void onCompleted(GestureDescription g) {
                 afterClick(target);
             }
+
             @Override public void onCancelled(GestureDescription g) {
-                if ("A".equals(target)) waitingForA = false;
-                else if (isActive()) handler.postDelayed(() -> clickTarget(target, 1), RETRY_DELAY_MS);
+                if ("A".equals(target)) {
+                    waitingForA = false;
+                } else if (isActive()) {
+                    handler.postDelayed(() -> clickTarget(target, 1), RETRY_DELAY_MS);
+                }
             }
         }, handler);
     }
@@ -193,7 +195,8 @@ public class AutomationAccessibilityService extends AccessibilityService {
         return new Point(prefs.getInt(xKey, -1), prefs.getInt(yKey, -1));
     }
 
-    private AccessibilityNodeInfo findExact(AccessibilityNodeInfo node, String wanted, boolean description) {
+    private AccessibilityNodeInfo findExact(
+            AccessibilityNodeInfo node, String wanted, boolean description) {
         if (node == null) return null;
 
         CharSequence text = node.getText();
@@ -214,7 +217,7 @@ public class AutomationAccessibilityService extends AccessibilityService {
     }
 
     private String normalize(String s) {
-        return s == null ? "" : s.trim().replaceAll("\\s+", "").toLowerCase(Locale.US);
+        return s == null ? "" : s.trim().replaceAll("\s+", "").toLowerCase(Locale.US);
     }
 
     private void showBubble() {
@@ -234,12 +237,18 @@ public class AutomationAccessibilityService extends AccessibilityService {
         lp.x = 18;
         lp.y = 180;
 
-        try { wm.addView(bubble, lp); }
-        catch (Exception e) { bubble = null; }
+        try {
+            wm.addView(bubble, lp);
+        } catch (Exception e) {
+            bubble = null;
+        }
     }
 
     private void toggleMenu() {
-        if (menu != null) { removeMenu(); return; }
+        if (menu != null) {
+            removeMenu();
+            return;
+        }
 
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -285,13 +294,17 @@ public class AutomationAccessibilityService extends AccessibilityService {
         box.addView(close);
 
         menu = box;
-        WindowManager.LayoutParams lp = overlayParams(340, WindowManager.LayoutParams.WRAP_CONTENT);
+        WindowManager.LayoutParams lp =
+                overlayParams(340, WindowManager.LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.TOP | Gravity.END;
         lp.x = 18;
         lp.y = 250;
 
-        try { wm.addView(menu, lp); }
-        catch (Exception e) { menu = null; }
+        try {
+            wm.addView(menu, lp);
+        } catch (Exception e) {
+            menu = null;
+        }
     }
 
     private Button button(String label) {
@@ -302,7 +315,8 @@ public class AutomationAccessibilityService extends AccessibilityService {
 
     private WindowManager.LayoutParams overlayParams(int width, int height) {
         return new WindowManager.LayoutParams(
-                width, height,
+                width,
+                height,
                 WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
                 PixelFormat.TRANSLUCENT);
@@ -341,8 +355,11 @@ public class AutomationAccessibilityService extends AccessibilityService {
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.MATCH_PARENT);
 
-        try { wm.addView(calibration, lp); }
-        catch (Exception e) { calibration = null; }
+        try {
+            wm.addView(calibration, lp);
+        } catch (Exception e) {
+            calibration = null;
+        }
     }
 
     private void removeMenu() {
