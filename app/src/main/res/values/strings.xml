@@ -1,4 +1,3 @@
 <resources>
     <string name="app_name">Auto Clicker Test</string>
-    <string name="accessibility_description">Reads the configured countdown text in your selected test app and clicks the configured Target B.</string>
 </resources>
