@@ -1,240 +1,281 @@
 package com.autoclicker.test;
 
 import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.graphics.Color;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
+import android.provider.Settings;
+import android.text.InputType;
 import android.view.Gravity;
+import android.view.View;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+
 public class MainActivity extends Activity {
-    private static final int TRIGGER_COUNTDOWN = 15;
-    private static final long SECOND_ACTION_DELAY_MS = 22_000L;
-    private static final int DEFAULT_START_COUNTDOWN = 30;
+    private static final String SERVICE_NAME =
+            "com.autoclicker.test/.AutomationAccessibilityService";
 
-    private final Handler handler = new Handler(Looper.getMainLooper());
+    private SharedPreferences prefs;
+    private Spinner appSpinner;
+    private EditText triggerInput;
+    private EditText targetAText;
+    private EditText targetBText;
+    private TextView status;
 
-    private TextView countdownView;
-    private TextView statusView;
-    private TextView logView;
-    private Button targetA;
-    private Button targetB;
-    private EditText startValue;
-
-    private int countdown = DEFAULT_START_COUNTDOWN;
-    private boolean testRunning;
-    private boolean automationEnabled = true;
-    private boolean waitingForSecondAction;
-    private boolean triggeredAt15;
-
-    private final Runnable countdownTick = new Runnable() {
-        @Override public void run() {
-            if (!testRunning) return;
-
-            updateCountdown();
-
-            if (countdown > 0) {
-                countdown--;
-                handler.postDelayed(this, 1000L);
-            } else {
-                testRunning = false;
-                updateStatus("Countdown finished. Test is idle.");
-                appendLog("Countdown finished.");
-            }
-        }
-    };
-
-    private final Runnable secondAction = () -> {
-        if (!waitingForSecondAction) return;
-
-        targetA.performClick();
-        waitingForSecondAction = false;
-        updateStatus("Automation complete: Target A clicked after 22 seconds.");
-        appendLog("22 seconds elapsed -> Target A clicked automatically.");
-    };
+    private final List<ResolveInfo> launchableApps = new ArrayList<>();
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        prefs = getSharedPreferences(AutomationAccessibilityService.PREFS, MODE_PRIVATE);
         buildUi();
     }
 
-    @Override protected void onDestroy() {
-        handler.removeCallbacksAndMessages(null);
-        super.onDestroy();
+    @Override protected void onResume() {
+        super.onResume();
+        if (status != null) updateStatus();
     }
 
     private void buildUi() {
-        ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(24, 24, 24, 24);
-        scroll.addView(root);
 
         TextView title = text("Auto Clicker Test", 28);
         title.setTextColor(Color.rgb(21, 101, 192));
         root.addView(title);
 
-        root.addView(text(
-                "Safe self-test mode\n\n"
-                + "This APK tests its own UI. It does not use AccessibilityService, "
-                + "screen capture, overlay permission, or external-app control.", 15));
+        TextView disclosure = text(
+                "IMPORTANT AUTOMATION DISCLOSURE\n\n"
+                + "This app uses Android AccessibilityService only after you explicitly enable it. "
+                + "It reads the selected test app's visible UI to find the exact countdown value "
+                + "and the configured Target A/Target B controls. It can perform the fixed rule "
+                + ""countdown = 15 -> click B -> wait 22 seconds -> click A". "
+                + "It does not record the screen, capture screenshots, upload UI data, or make decisions "
+                + "outside this fixed rule.\n\n"
+                + "Only enable the service when you understand and want this automation.", 14);
+        disclosure.setTextColor(Color.DKGRAY);
+        root.addView(disclosure);
 
-        countdownView = text("", 64);
-        countdownView.setGravity(Gravity.CENTER);
-        root.addView(countdownView, new LinearLayout.LayoutParams(-1, 150));
-
-        statusView = text("Ready. Automation is ON.", 16);
-        root.addView(statusView);
-
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-
-        targetA = new Button(this);
-        targetA.setText("Target A");
-        targetA.setContentDescription("Target A");
-        targetA.setOnClickListener(v -> {
-            appendLog("Target A clicked.");
-            updateStatus("Target A clicked.");
+        Button enable = new Button(this);
+        enable.setText("ENABLE ACCESSIBILITY");
+        enable.setOnClickListener(v -> {
+            Toast.makeText(this,
+                    "Android Settings will open. Enable Auto Clicker Test, then return here.",
+                    Toast.LENGTH_LONG).show();
+            try {
+                startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+            } catch (Exception e) {
+                Toast.makeText(this, "Unable to open Accessibility Settings.", Toast.LENGTH_LONG).show();
+            }
         });
+        root.addView(enable);
 
-        targetB = new Button(this);
-        targetB.setText("Target B");
-        targetB.setContentDescription("Target B");
-        targetB.setOnClickListener(v -> {
-            appendLog("Target B clicked.");
-            updateStatus("Target B clicked.");
-        });
+        status = text("", 15);
+        root.addView(status);
 
-        row.addView(targetA, weightParams());
-        row.addView(targetB, weightParams());
-        root.addView(row);
+        root.addView(text("1. SELECT INSTALLED APP", 18));
+        appSpinner = new Spinner(this);
+        root.addView(appSpinner);
 
-        startValue = new EditText(this);
-        startValue.setInputType(2);
-        startValue.setText(String.valueOf(DEFAULT_START_COUNTDOWN));
-        startValue.setHint("Starting countdown");
-        root.addView(startValue);
+        Button refresh = new Button(this);
+        refresh.setText("REFRESH INSTALLED APPS");
+        refresh.setOnClickListener(v -> loadApps());
+        root.addView(refresh);
 
-        Button start = new Button(this);
-        start.setText("START TEST");
-        start.setOnClickListener(v -> startTest());
-        root.addView(start);
+        Button launch = new Button(this);
+        launch.setText("LAUNCH SELECTED APP");
+        launch.setOnClickListener(v -> launchSelectedApp());
+        root.addView(launch);
 
-        Button toggle = new Button(this);
-        toggle.setText("AUTOMATION: ON");
-        toggle.setOnClickListener(v -> {
-            automationEnabled = !automationEnabled;
-            toggle.setText(automationEnabled ? "AUTOMATION: ON" : "AUTOMATION: OFF");
-            updateStatus(automationEnabled ? "Automation enabled." : "Automation disabled.");
-            appendLog(automationEnabled ? "Automation enabled." : "Automation disabled.");
-        });
-        root.addView(toggle);
+        root.addView(text("2. AUTOMATION RULE", 18));
 
-        Button reset = new Button(this);
-        reset.setText("RESET");
-        reset.setOnClickListener(v -> resetTest());
-        root.addView(reset);
+        triggerInput = input("15");
+        root.addView(labeled("Countdown exact value", triggerInput));
 
-        root.addView(text(
-                "MAIN LOGIC\n\n"
+        targetAText = input("Target A");
+        root.addView(labeled("Target A text/content description", targetAText));
+
+        targetBText = input("Target B");
+        root.addView(labeled("Target B text/content description", targetBText));
+
+        Button save = new Button(this);
+        save.setText("SAVE AUTOMATION SETTINGS");
+        save.setOnClickListener(v -> saveSettings());
+        root.addView(save);
+
+        TextView rule = text(
+                "FIXED WORKFLOW\n\n"
                 + "Countdown == 15\n"
-                + "-> Automatically click Target B\n"
-                + "-> Wait exactly 22 seconds\n"
-                + "-> Automatically click Target A\n\n"
-                + "Only the exact numeric value 15 triggers the workflow.", 17));
+                + "↓\n"
+                + "Click Target B\n"
+                + "↓\n"
+                + "Wait 22 seconds\n"
+                + "↓\n"
+                + "Click Target A\n\n"
+                + "Target controls are searched by exact text/content description first. "
+                + "If the target app does not expose accessible controls, use the floating menu's "
+                + "CALIBRATE TARGET A / CALIBRATE TARGET B options.", 16);
+        root.addView(rule);
 
-        logView = text("EVENT LOG\n", 14);
-        root.addView(logView);
+        Button active = new Button(this);
+        active.setText("ACTIVATE AUTOMATION");
+        active.setOnClickListener(v -> {
+            saveSettings();
+            prefs.edit().putBoolean(AutomationAccessibilityService.KEY_ACTIVE, true).apply();
+            Toast.makeText(this, "Automation ACTIVE. Launch the selected app.", Toast.LENGTH_SHORT).show();
+        });
+        root.addView(active);
 
-        setContentView(scroll);
-        updateCountdown();
+        Button stop = new Button(this);
+        stop.setText("STOP AUTOMATION");
+        stop.setOnClickListener(v -> {
+            prefs.edit().putBoolean(AutomationAccessibilityService.KEY_ACTIVE, false).apply();
+            Toast.makeText(this, "Automation stopped.", Toast.LENGTH_SHORT).show();
+        });
+        root.addView(stop);
+
+        setContentView(root);
+        loadApps();
+        loadSettingsIntoUi();
+        updateStatus();
     }
 
-    private void startTest() {
-        int start;
-        try {
-            start = Integer.parseInt(startValue.getText().toString().trim());
-        } catch (Exception e) {
-            Toast.makeText(this, "Enter a valid starting number.", Toast.LENGTH_SHORT).show();
+    private void loadApps() {
+        PackageManager pm = getPackageManager();
+        Intent intent = new Intent(Intent.ACTION_MAIN);
+        intent.addCategory(Intent.CATEGORY_LAUNCHER);
+
+        launchableApps.clear();
+        launchableApps.addAll(pm.queryIntentActivities(intent, 0));
+        Collections.sort(launchableApps, new Comparator<ResolveInfo>() {
+            @Override public int compare(ResolveInfo a, ResolveInfo b) {
+                return a.loadLabel(pm).toString().compareToIgnoreCase(b.loadLabel(pm).toString());
+            }
+        });
+
+        List<String> labels = new ArrayList<>();
+        for (ResolveInfo info : launchableApps) {
+            labels.add(info.loadLabel(pm) + "\n" + info.activityInfo.packageName);
+        }
+        if (labels.isEmpty()) labels.add("No launchable apps found");
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                this, android.R.layout.simple_spinner_item, labels);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        appSpinner.setAdapter(adapter);
+
+        String selected = prefs.getString(AutomationAccessibilityService.KEY_PACKAGE, "");
+        if (!selected.isEmpty()) {
+            for (int i = 0; i < launchableApps.size(); i++) {
+                if (launchableApps.get(i).activityInfo.packageName.equals(selected)) {
+                    appSpinner.setSelection(i);
+                    break;
+                }
+            }
+        }
+    }
+
+    private void launchSelectedApp() {
+        if (launchableApps.isEmpty()) {
+            Toast.makeText(this, "No launchable app selected.", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        if (start < 0 || start > 999) {
-            Toast.makeText(this, "Starting number must be 0-999.", Toast.LENGTH_SHORT).show();
+        ResolveInfo info = launchableApps.get(appSpinner.getSelectedItemPosition());
+        String pkg = info.activityInfo.packageName;
+        prefs.edit().putString(AutomationAccessibilityService.KEY_PACKAGE, pkg).apply();
+
+        Intent launchIntent = getPackageManager().getLaunchIntentForPackage(pkg);
+        if (launchIntent == null) {
+            Toast.makeText(this, "Could not launch selected app.", Toast.LENGTH_LONG).show();
             return;
         }
 
-        handler.removeCallbacksAndMessages(null);
-        countdown = start;
-        testRunning = true;
-        waitingForSecondAction = false;
-        triggeredAt15 = false;
-
-        appendLog("Test started at " + countdown + ".");
-        updateStatus("Monitoring countdown. Waiting for exactly 15.");
-        handler.post(countdownTick);
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(launchIntent);
+        Toast.makeText(this, "Selected app launched.", Toast.LENGTH_SHORT).show();
     }
 
-    private void updateCountdown() {
-        countdownView.setText(String.valueOf(countdown));
+    private void saveSettings() {
+        String trigger = triggerInput.getText().toString().trim();
+        if (trigger.isEmpty()) trigger = "15";
 
-        if (automationEnabled
-                && testRunning
-                && countdown == TRIGGER_COUNTDOWN
-                && !triggeredAt15
-                && !waitingForSecondAction) {
+        prefs.edit()
+                .putString(AutomationAccessibilityService.KEY_TRIGGER, trigger)
+                .putString(AutomationAccessibilityService.KEY_TARGET_A_TEXT,
+                        targetAText.getText().toString().trim())
+                .putString(AutomationAccessibilityService.KEY_TARGET_B_TEXT,
+                        targetBText.getText().toString().trim())
+                .apply();
 
-            triggeredAt15 = true;
-            waitingForSecondAction = true;
-
-            targetB.performClick();
-            appendLog("Countdown == 15 -> Target B clicked automatically.");
-            updateStatus("Target B clicked. Waiting 22 seconds for Target A.");
-
-            handler.postDelayed(secondAction, SECOND_ACTION_DELAY_MS);
+        if (!launchableApps.isEmpty() && appSpinner.getSelectedItemPosition() >= 0) {
+            ResolveInfo info = launchableApps.get(appSpinner.getSelectedItemPosition());
+            prefs.edit().putString(
+                    AutomationAccessibilityService.KEY_PACKAGE,
+                    info.activityInfo.packageName).apply();
         }
 
-        // Prevent repeated triggers while the same 15 value is displayed.
-        if (countdown != TRIGGER_COUNTDOWN && !waitingForSecondAction) {
-            triggeredAt15 = false;
-        }
+        Toast.makeText(this, "Automation settings saved.", Toast.LENGTH_SHORT).show();
     }
 
-    private void resetTest() {
-        handler.removeCallbacksAndMessages(null);
-        testRunning = false;
-        waitingForSecondAction = false;
-        triggeredAt15 = false;
-        countdown = DEFAULT_START_COUNTDOWN;
-        updateCountdown();
-        updateStatus("Reset. Ready for another test.");
-        appendLog("Test reset.");
+    private void loadSettingsIntoUi() {
+        triggerInput.setText(prefs.getString(AutomationAccessibilityService.KEY_TRIGGER, "15"));
+        targetAText.setText(prefs.getString(
+                AutomationAccessibilityService.KEY_TARGET_A_TEXT, "Target A"));
+        targetBText.setText(prefs.getString(
+                AutomationAccessibilityService.KEY_TARGET_B_TEXT, "Target B"));
+    }
+
+    private void updateStatus() {
+        boolean enabled = isAccessibilityEnabled();
+        boolean active = prefs.getBoolean(AutomationAccessibilityService.KEY_ACTIVE, false);
+        status.setText("Accessibility: " + (enabled ? "ENABLED" : "NOT ENABLED")
+                + "\nAutomation: " + (active ? "ACTIVE" : "STOPPED"));
+    }
+
+    private boolean isAccessibilityEnabled() {
+        String enabledServices = Settings.Secure.getString(
+                getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+        return enabledServices != null && enabledServices.toLowerCase()
+                .contains(SERVICE_NAME.toLowerCase());
+    }
+
+    private EditText input(String value) {
+        EditText e = new EditText(this);
+        e.setText(value);
+        e.setSingleLine(true);
+        e.setInputType(InputType.TYPE_CLASS_TEXT);
+        return e;
+    }
+
+    private LinearLayout labeled(String label, EditText input) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        TextView l = text(label, 14);
+        box.addView(l);
+        box.addView(input);
+        return box;
     }
 
     private TextView text(String value, int size) {
         TextView t = new TextView(this);
         t.setText(value);
         t.setTextSize(size);
-        t.setPadding(18, 14, 18, 14);
+        t.setPadding(12, 12, 12, 12);
         return t;
-    }
-
-    private LinearLayout.LayoutParams weightParams() {
-        return new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-    }
-
-    private void updateStatus(String value) {
-        if (statusView != null) statusView.setText(value);
-    }
-
-    private void appendLog(String value) {
-        if (logView == null) return;
-        logView.setText(logView.getText().toString() + value + "\n");
     }
 }
