@@ -48,7 +48,7 @@ public class MainActivity extends Activity {
     private void loadApps(Spinner spinner){
         List<ApplicationInfo> list=getPackageManager().getInstalledApplications(PackageManager.GET_META_DATA); ArrayList<String> labels=new ArrayList<>();
         for(ApplicationInfo a:list){ if(getPackageManager().getLaunchIntentForPackage(a.packageName)!=null){packages.add(a.packageName); labels.add(a.loadLabel(getPackageManager())+"\n"+a.packageName);} }
-        Collections.sort(labels); spinner.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,labels)); if(!packages.isEmpty())selectedPackage=packages.get(0);
+        spinner.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,labels)); if(!packages.isEmpty())selectedPackage=packages.get(0);
     }
     @Override protected void onActivityResult(int r,int c,Intent data){super.onActivityResult(r,c,data); if(r==REQ_CAPTURE && c==RESULT_OK && data!=null){ScreenMonitorService.start(this,data,trigger,delaySeconds);}}
     private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
