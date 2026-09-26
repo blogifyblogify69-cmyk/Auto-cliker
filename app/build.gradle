@@ -8,13 +8,13 @@ android {
         applicationId 'com.autoclicker.test'
         minSdk 26
         targetSdk 35
-        versionCode 6
-        versionName '3.3'
+        versionCode 7
+        versionName '3.4'
     }
 
     buildTypes {
         debug {
-            // Standard Android debug signing; no user-provided keystore is required.
+            // Standard Android debug signing. No user keystore/password is required.
         }
     }
 
