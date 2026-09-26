@@ -227,6 +227,7 @@ public class AutomationAccessibilityService extends AccessibilityService
 
     private void handleSuccessfulClick(String target) {
         if ("B".equals(target)) {
+            engine.onTargetBClicked();
             scheduleTargetA();
         } else {
             waitingForTargetAClick = false;
@@ -243,7 +244,7 @@ public class AutomationAccessibilityService extends AccessibilityService
         targetARunnable = () -> {
             targetARunnable = null;
             if (isAutomationActive() && waitingForTargetAClick) {
-                clickTarget("A", 0);
+                engine.requestTargetA();
             }
         };
 
@@ -283,8 +284,10 @@ public class AutomationAccessibilityService extends AccessibilityService
 
         if ("A".equals(target)) {
             waitingForTargetAClick = false;
-            message("Target A click failed. Automation remains armed for the current cycle.");
+            engine.onTargetAFailed();
+            message("Target A click failed. Automation is waiting for the next 15.");
         } else {
+            engine.onTargetBFailed();
             message("Target B click failed. Calibrate Target B and try again.");
         }
     }
