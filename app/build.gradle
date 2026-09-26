@@ -1,5 +1,10 @@
 plugins { id 'com.android.application' }
 
+def releaseKeystorePath = System.getenv("RELEASE_KEYSTORE_PATH")
+def releaseStorePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+def releaseKeyAlias = System.getenv("RELEASE_KEY_ALIAS")
+def releaseKeyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+
 android {
     namespace 'com.autoclicker.test'
     compileSdk 35
@@ -8,8 +13,36 @@ android {
         applicationId 'com.autoclicker.test'
         minSdk 26
         targetSdk 35
-        versionCode 4
-        versionName '3.0'
+        versionCode 5
+        versionName '3.1'
+    }
+
+    signingConfigs {
+        release {
+            if (releaseKeystorePath) {
+                storeFile file(releaseKeystorePath)
+            }
+            if (releaseStorePassword) {
+                storePassword releaseStorePassword
+            }
+            if (releaseKeyAlias) {
+                keyAlias releaseKeyAlias
+            }
+            if (releaseKeyPassword) {
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            // Debug builds keep the normal Android debug signing.
+        }
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+            shrinkResources false
+        }
     }
 
     testOptions {
