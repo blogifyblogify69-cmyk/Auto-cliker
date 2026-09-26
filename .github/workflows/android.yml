@@ -58,8 +58,8 @@ jobs:
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n 1)
           test -n "$AAPT"
           "$AAPT" dump badging app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk-badging.txt
-          grep -F 'package: name="com.autoclicker.virtualtest" versionCode="12" versionName="5.2"' /tmp/apk-badging.txt
-          grep -F 'launchable-activity: name="com.autoclicker.test.MainActivity"' /tmp/apk-badging.txt
+          grep -F "package: name='com.autoclicker.virtualtest' versionCode='12' versionName='5.2'" /tmp/apk-badging.txt
+          grep -F "launchable-activity: name='com.autoclicker.test.MainActivity'" /tmp/apk-badging.txt
           ! grep -F "BIND_ACCESSIBILITY_SERVICE" /tmp/apk-badging.txt
 
       - name: Upload portable APK
