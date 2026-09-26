@@ -63,7 +63,7 @@ public class MainActivity extends Activity {
                 + "This app uses Android AccessibilityService only after you explicitly enable it. "
                 + "It reads the selected test app's visible UI to find the exact countdown value "
                 + "and the configured Target A/Target B controls. It can perform the fixed rule "
-                + "\\"countdown = 15 -> click B -> wait 22 seconds -> click A\\". "
+                + "It can perform the fixed rule: countdown 15 -> click B -> wait 22 seconds -> click A. "
                 + "It does not record the screen, capture screenshots, upload UI data, or make decisions "
                 + "outside this fixed rule.\n\n"
                 + "Only enable the service when you understand and want this automation.", 14);
