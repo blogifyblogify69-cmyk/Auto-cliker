@@ -1,6 +1,6 @@
 package com.autoclicker.test;
 
-import android.content.Intent;
+import android.content.Context;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.provider.Settings;
@@ -21,6 +21,7 @@ public final class OverlayController {
         void openAccessibilitySettings();
     }
 
+    private final Context context;
     private final WindowManager windowManager;
     private final Host host;
     private final TargetManager targets;
@@ -31,10 +32,12 @@ public final class OverlayController {
     private View calibration;
     private String calibrationTarget;
 
-    public OverlayController(WindowManager windowManager,
+    public OverlayController(Context context,
+                             WindowManager windowManager,
                              Host host,
                              TargetManager targets,
                              android.content.SharedPreferences prefs) {
+        this.context = context;
         this.windowManager = windowManager;
         this.host = host;
         this.targets = targets;
@@ -44,7 +47,7 @@ public final class OverlayController {
     public void showBubble() {
         if (bubble != null) return;
 
-        TextView view = new TextView((android.content.Context) host);
+        TextView view = new TextView(context);
         view.setText("A");
         view.setTextSize(22);
         view.setTextColor(Color.WHITE);
