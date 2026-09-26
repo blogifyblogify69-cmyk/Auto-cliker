@@ -1,60 +1,56 @@
 # Auto Clicker Test
 
-Android automation/testing utility for apps you own or are authorized to test.
+A safe Android self-test APK for validating a simple timed click workflow inside its own UI.
 
-## Exact automation rule
+## Main logic
 
-**When the selected app exposes the countdown text as exactly `15`, click Target B.**
+1. The countdown runs normally.
+2. When the countdown is exactly **15**, the app automatically clicks **Target B**.
+3. It waits **22 seconds**.
+4. It automatically clicks **Target A**.
+5. The cycle finishes and does not repeatedly trigger while the countdown remains 15.
 
-Then:
-1. Click Target B once.
-2. Wait **22 seconds**.
-3. Click Target B again.
-4. Resume monitoring.
-5. Do not trigger repeatedly while the countdown remains `15`.
+Exact matching is intentional:
 
-The service only reacts to the selected app package.
+- 15 -> triggers
+- 115 -> does not trigger
+- 150 -> does not trigger
+- 15.0 -> does not trigger
 
-## Detection method
+## Safe installation design
 
-The main automation path uses Android **AccessibilityService** rather than continuous screenshots/OCR.
+This version does not use:
 
-- Countdown is read from the accessibility tree.
-- The comparison is exact: `text == 15`.
-- `115`, `150`, `15.0`, etc. do not match.
-- Target B can be exposed as accessibility text/content description: `Target B`, `target_b`, or `B`.
-- Coordinate calibration is available as a fallback when Target B is not exposed as an accessibility node.
+- AccessibilityService
+- SYSTEM_ALERT_WINDOW
+- MediaProjection/screen capture
+- OCR
+- external-app automation
+- special Android permissions
 
-## Recommended setup in your own test app
+It is a normal APK that installs and runs as a regular application.
 
-Expose the countdown and button to accessibility:
+## How to test
 
-- Countdown: text/value = `15`, with a stable accessibility description such as `countdown`.
-- Target button: content description = `target_b`.
+1. Install the APK normally.
+2. Open **Auto Clicker Test**.
+3. Leave the starting countdown at **30**.
+4. Tap **START TEST**.
+5. Watch the countdown reach **15**.
+6. At exactly **15**, Target B is clicked automatically.
+7. After **22 seconds**, Target A is clicked automatically.
+8. Check the event log.
 
-This avoids screen capture and OCR and is more reliable across screen sizes.
+You can turn **AUTOMATION** off to verify that automatic actions stop.
 
-## User flow
+## Important
 
-1. Install the Auto Clicker Test APK.
-2. Enable its Accessibility Service in Android Settings.
-3. Select your test app.
-4. Set trigger to `15`.
-5. Set delay to `22` seconds.
-6. Launch the selected app.
-7. Tap **START AUTOMATION**.
-8. The floating **A** button provides Activate, Stop and Stop All Active controls.
-
-## Permissions
-
-The current design does not request MediaProjection screen capture or the `SYSTEM_ALERT_WINDOW` permission. Android's Accessibility Service permission must still be explicitly enabled by the user.
-
-Use this only with your own app or where you have authorization to automate the target app.
+This build intentionally tests the logic inside this APK. It does not control arbitrary third-party applications. That keeps installation simple and avoids sensitive Android automation permissions.
 
 ## Build
 
-Open the project in Android Studio or run:
+Run:
 
-`./gradlew assembleDebug`
+`gradle assembleDebug`
 
-The GitHub Actions workflow also builds the debug APK.
+The GitHub Actions workflow uploads the resulting debug APK as **AutoClicker-debug-apk**.
