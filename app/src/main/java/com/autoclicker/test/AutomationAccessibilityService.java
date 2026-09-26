@@ -217,7 +217,7 @@ public class AutomationAccessibilityService extends AccessibilityService {
     }
 
     private String normalize(String s) {
-        return s == null ? "" : s.trim().replaceAll("\s+", "").toLowerCase(Locale.US);
+        return s == null ? "" : s.trim().replaceAll("\\s+", "").toLowerCase(Locale.US);
     }
 
     private void showBubble() {
