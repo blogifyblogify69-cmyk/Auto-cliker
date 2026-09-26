@@ -1,4 +1,4 @@
-name: Android Portable Virtual Test APK
+name: Android Portable Virtual Test APK — v5.2
 
 on:
   push:
@@ -34,6 +34,7 @@ jobs:
           gradle --version
           echo "ANDROID_HOME=$ANDROID_HOME"
           test -d "$ANDROID_HOME"
+          test -d "$ANDROID_HOME/platforms/android-35"
           ls "$ANDROID_HOME/platforms" | tail -n 5 || true
           ls "$ANDROID_HOME/build-tools" | tail -n 5 || true
 
@@ -56,10 +57,13 @@ jobs:
         run: |
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n 1)
           test -n "$AAPT"
-          "$AAPT" dump badging app/build/outputs/apk/debug/app-debug.apk | head -n 5
+          "$AAPT" dump badging app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk-badging.txt
+          grep -F 'package: name="com.autoclicker.virtualtest" versionCode="12" versionName="5.2"' /tmp/apk-badging.txt
+          grep -F 'launchable-activity: name="com.autoclicker.test.MainActivity"' /tmp/apk-badging.txt
+          ! grep -F "BIND_ACCESSIBILITY_SERVICE" /tmp/apk-badging.txt
 
       - name: Upload portable APK
         uses: actions/upload-artifact@v4
         with:
-          name: AutoClicker-Portable-Virtual-v5.1
+          name: AutoClicker-Portable-Virtual-v5.2
           path: app/build/outputs/apk/debug/app-debug.apk
