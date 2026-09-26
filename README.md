@@ -2,165 +2,112 @@
 
 A user-controlled Android automation/testing controller for a selected installed test application.
 
-## Exact automation workflow
+## Fixed automation logic
 
-1. User selects an installed app.
-2. User launches that app from this controller.
-3. User explicitly enables the Accessibility Service in Android Settings.
-4. The floating A icon is available over the selected app.
-5. User opens the menu and taps ACTIVE.
-6. The service watches only the selected package.
-7. When an accessible countdown value is exactly 15, it clicks Target B.
-8. It waits exactly 22 seconds.
-9. It clicks Target A.
-10. The cycle ends and will not retrigger until the 15 value has disappeared and is detected again.
+The APK now has a simple fixed workflow. No trigger value, timing value, keystore value, password, or signing key is required from the user.
 
-The trigger is exact: 15 triggers; 115, 150, and 15.0 do not.
+1. Select an installed test app.
+2. Enable the controller's Accessibility Service in Android Settings.
+3. Launch the selected app.
+4. Use the floating **A** button.
+5. Choose **CALIBRATE TARGET A** and tap Target A.
+6. Choose **CALIBRATE TARGET B** and tap Target B.
+7. Choose **ACTIVE**.
+8. The controller watches only the selected package.
+9. When the accessible countdown is exactly **15**, it clicks **Target B**.
+10. It waits exactly **22 seconds**.
+11. It clicks **Target A**.
+12. The cycle finishes.
+13. It will not trigger again while the same 15 remains visible. It must disappear and be detected again before another cycle.
 
-## Target clicking reliability
+The trigger is fixed to exactly 15. The delay is fixed to exactly 22 seconds.
 
-The service tries Target A/B in this order:
+## Target clicking
 
-1. Exact accessibility text/content description.
-2. `target_a` / `target_b` accessibility description.
-3. A user-calibrated screen coordinate.
+For each target, the service first tries accessible controls named Target A / Target B or target_a / target_b.
 
-If the target app is a custom Canvas/OpenGL/game surface and does not expose accessible controls, use:
+If the selected test app does not expose those controls through Accessibility, use the floating calibration buttons. The controller stores the screen coordinates locally and uses Android accessibility gesture dispatch.
 
+## Countdown detection
+
+The current build uses the Accessibility UI tree to find an exact text/content-description value of 15.
+
+If the countdown is drawn only as pixels by a custom Canvas/OpenGL surface and is not exposed to Accessibility, this build cannot read the number from the screen. In that case the target app should expose the countdown as an accessibility-visible text/content description, or a separate test-only visual/OCR implementation would be needed.
+
+## Controls
+
+Main controller:
+
+- Select installed app
+- Refresh apps
+- Launch selected app
+- Enable Accessibility
+- Activate automation
+- Stop automation
+
+Floating controller:
+
+- ACTIVE / STOP
+- STOP ALL ACTIVE
 - CALIBRATE TARGET A
 - CALIBRATE TARGET B
-
-Tap the exact target location once. The coordinates are saved locally and used with Android accessibility gesture dispatch.
-
-## Important countdown requirement
-
-For the most reliable trigger, the target app should expose the countdown as an accessibility text node. If the countdown is only pixels inside a Canvas/OpenGL surface, the service cannot read the number directly from the accessibility tree. This build deliberately does not use screen recording or OCR.
-
-For an app you control, expose the countdown with an accessibility-visible TextView/content description and expose Target A/Target B with stable text/content descriptions.
-
-## User control
-
-The controller provides:
-
-- Installed-app selection
-- Launch selected app
-- Accessibility disclosure before enabling
-- ACTIVE
-- STOP
-- STOP ALL ACTIVE
-- Target A calibration
-- Target B calibration
 - Accessibility Settings
+- CLOSE
 
-Automation stays off until the user activates it.
+Automation remains off until the user explicitly activates it.
 
-## Accessibility disclosure
+## Build and installation
 
-This app uses Android AccessibilityService to inspect the selected test app's visible accessibility tree and perform the explicitly configured click sequence. It does not record the screen, upload accessibility data, or make decisions outside the fixed user-defined rule.
+This repository intentionally uses a debug-only APK workflow for testing.
 
-If distributed through Google Play, complete the applicable AccessibilityService declaration and disclosure/consent requirements. Do not falsely declare this as an accessibility tool unless its primary purpose actually qualifies as disability assistance.
+There are no:
 
-## Build types
+- RELEASE_KEYSTORE_BASE64
+- RELEASE_KEYSTORE_PASSWORD
+- RELEASE_KEY_ALIAS
+- RELEASE_KEY_PASSWORD
+- release keystore files
+- release signing setup
 
-### Debug
+Every push to main, and every manual workflow run, builds:
 
-Pushes to `main` run the debug validation job:
+app/build/outputs/apk/debug/app-debug.apk
 
-```text
-gradle assembleDebug
-```
+GitHub Actions uploads it as the AutoClicker-debug-v3.2 artifact.
 
-The resulting debug APK is uploaded as the `AutoClicker-debug-apk` Actions artifact.
+Android debug builds use the standard debug signing setup, so no personal signing key is required for this test build.
 
-### Signed release
+For local installation with Android tools:
 
-The manual `workflow_dispatch` release job creates:
+~~~text
+adb install app-debug.apk
+~~~
 
-- `AutoClicker-v3.1.apk` — signed APK for direct Android installation.
-- `AutoClicker-v3.1.aab` — signed Android App Bundle for Play Console.
-- `SHA256.txt` — SHA-256 checksums.
-- `BUILD_INFO.txt` — build metadata.
+## Android permissions and security
 
-Android release builds must be signed with a release key. The private keystore is intentionally not stored in this repository.
+The controller uses Android AccessibilityService because cross-app UI inspection and gesture dispatch require an Android-supported accessibility mechanism.
 
-## GitHub Actions release signing setup
+The user must explicitly enable the service in Android Settings.
 
-Add these **repository Actions secrets** before running the manual release workflow:
+Do not disable or bypass Android security protections to install the APK.
 
-```text
-RELEASE_KEYSTORE_BASE64
-RELEASE_KEYSTORE_PASSWORD
-RELEASE_KEY_ALIAS
-RELEASE_KEY_PASSWORD
-```
+If the selected app does not expose its countdown through Accessibility, the fixed automation cannot reliably detect 15 with this build.
 
-### Create a release keystore
+## Testing sequence
 
-Run this on your own computer and keep the resulting keystore and passwords safe:
+After installing:
 
-```bash
-keytool -genkeypair -v \
-  -keystore autoclicker-release.jks \
-  -alias autoclicker \
-  -keyalg RSA \
-  -keysize 4096 \
-  -validity 10000
-```
+1. Open Auto Clicker Test.
+2. Tap ENABLE ACCESSIBILITY.
+3. Enable Auto Clicker Test in Android Accessibility Settings.
+4. Return to the controller.
+5. Select the test app.
+6. Tap LAUNCH SELECTED APP.
+7. Open the floating A button.
+8. Calibrate Target A.
+9. Calibrate Target B.
+10. Tap ACTIVE.
+11. Test the countdown: 15 -> B -> 22 seconds -> A.
+12. Tap STOP to cancel automation.
 
-Convert the keystore to Base64 for the `RELEASE_KEYSTORE_BASE64` secret:
-
-Linux/macOS:
-
-```bash
-base64 -w 0 autoclicker-release.jks
-```
-
-On systems whose `base64` does not support `-w`, use:
-
-```bash
-base64 autoclicker-release.jks
-```
-
-Then add the four values under:
-
-```text
-GitHub repository
-→ Settings
-→ Secrets and variables
-→ Actions
-→ New repository secret
-```
-
-Never commit the keystore, passwords, or decoded keystore into the repository.
-
-## Run a signed release
-
-Open:
-
-```text
-GitHub
-→ Actions
-→ Android Build and Release
-→ Run workflow
-```
-
-Enter a release tag such as:
-
-```text
-v3.1.0
-```
-
-The workflow restores the private keystore only on the GitHub runner, builds the signed APK/AAB, verifies the APK signature, calculates SHA-256 checksums, uploads the artifacts, and creates a GitHub Release.
-
-## Important installation note
-
-A signed release APK is the correct Android release format, but no build can guarantee that Android/Play Protect will never warn about an app. This project uses AccessibilityService for its disclosed testing/automation function, so Android security systems may apply additional checks.
-
-Do not disable or bypass Android security protections to install the application. If installation is blocked, use the exact warning/error shown by Android to diagnose the issue.
-
-## Security
-
-- No release keystore is stored in Git.
-- Signing passwords are supplied through GitHub Actions secrets.
-- The workflow grants `contents: write` only because it creates the GitHub Release.
-- The automation remains user-controlled and limited to the selected package.
+This repository build is intended for testing an app you control or are authorized to test.
