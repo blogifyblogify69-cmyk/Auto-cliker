@@ -41,6 +41,9 @@ jobs:
       - name: Run unit tests
         run: gradle test --stacktrace
 
+      - name: Run Android lint
+        run: gradle lintDebug --stacktrace
+
       - name: Build universal debug APK
         run: gradle clean assembleDebug --stacktrace
 
@@ -61,6 +64,8 @@ jobs:
           grep -F "package: name='com.autoclicker.virtualtest' versionCode='12' versionName='5.2'" /tmp/apk-badging.txt
           grep -F "launchable-activity: name='com.autoclicker.test.MainActivity'" /tmp/apk-badging.txt
           ! grep -F "BIND_ACCESSIBILITY_SERVICE" /tmp/apk-badging.txt
+          ! "$AAPT" dump permissions app/build/outputs/apk/debug/app-debug.apk | grep -E "android.permission.(SYSTEM_ALERT_WINDOW|FOREGROUND_SERVICE|BIND_ACCESSIBILITY_SERVICE|READ_MEDIA_IMAGES|READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE)"
+          ! unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -E "AccessibilityService|OverlayController|GestureExecutor|CountdownDetector|TargetManager|AutomationAccessibilityService"
 
       - name: Upload portable APK
         uses: actions/upload-artifact@v4
