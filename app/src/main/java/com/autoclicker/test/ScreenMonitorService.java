@@ -1,6 +1,6 @@
 package com.autoclicker.test;
 
-import android.app.*;import android.content.*;import android.graphics.*;import android.hardware.display.*;import android.media.*;import android.media.projection.*;import android.os.*;import androidx.annotation.NonNull;import com.google.mlkit.vision.common.InputImage;import com.google.mlkit.vision.text.*;import java.nio.*;import java.util.concurrent.*;
+import android.app.*;import android.content.*;import android.graphics.*;import android.hardware.display.*;import android.media.*;import android.media.projection.*;import android.os.*;import android.util.DisplayMetrics;import androidx.annotation.NonNull;import com.google.mlkit.vision.common.InputImage;import com.google.mlkit.vision.text.*;import com.google.mlkit.vision.text.latin.TextRecognizerOptions;import java.nio.*;import java.util.concurrent.*;
 
 public class ScreenMonitorService extends Service {
     public static boolean running=false; private static ScreenMonitorService self; private MediaProjection projection; private VirtualDisplay display; private ImageReader reader; private ScheduledExecutorService exec; private int trigger=15,delay=22; private boolean armed=true; private Rect region; private Handler main=new Handler(Looper.getMainLooper());
