@@ -2,6 +2,8 @@ package com.autoclicker.test;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
@@ -9,8 +11,6 @@ import android.graphics.Point;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
-import android.content.Intent;
-import android.content.SharedPreferences;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -23,7 +23,9 @@ import android.widget.TextView;
 
 import java.util.Locale;
 
-public class AutomationAccessibilityService extends AccessibilityService {
+public class AutomationAccessibilityService extends AccessibilityService
+        implements AutomationEngine.Listener {
+
     public static final String PREFS = "automation_prefs";
     public static final String KEY_PACKAGE = "selected_package";
     public static final String KEY_ACTIVE = "automation_active";
@@ -31,214 +33,295 @@ public class AutomationAccessibilityService extends AccessibilityService {
     public static final String KEY_A_Y = "target_a_y";
     public static final String KEY_B_X = "target_b_x";
     public static final String KEY_B_Y = "target_b_y";
-    public static final String KEY_TARGET_A_TEXT = "target_a_text";
-    public static final String KEY_TARGET_B_TEXT = "target_b_text";
-    public static final String KEY_TRIGGER = "trigger_text";
 
     private static final String FIXED_TRIGGER = "15";
     private static final long SECOND_DELAY_MS = 22_000L;
-    private static final long RETRY_DELAY_MS = 350L;
-    private static final int MAX_ATTEMPTS = 3;
+    private static final long RETRY_DELAY_MS = 300L;
+    private static final int MAX_ATTEMPTS = 4;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private SharedPreferences prefs;
-    private WindowManager wm;
+    private WindowManager windowManager;
     private View bubble;
     private View menu;
     private View calibration;
-    private boolean waitingForA;
-    private boolean triggerConsumed;
     private String calibrationTarget;
 
-    private final Runnable secondClick = () -> {
-        if (waitingForA && isActive()) clickTarget("A", 0);
-    };
+    private AutomationEngine engine;
+    private boolean waitingForTargetAClick;
+    private Runnable targetARunnable;
 
-    @Override public void onServiceConnected() {
+    @Override
+    public void onServiceConnected() {
         super.onServiceConnected();
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        engine = new AutomationEngine(this);
         showBubble();
     }
 
-    @Override public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (!isActive() || prefs == null) return;
+    @Override
+    public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (!isAutomationActive() || prefs == null || engine == null) return;
 
-        String selected = prefs.getString(KEY_PACKAGE, "");
-        String pkg = event.getPackageName() == null ? "" : event.getPackageName().toString();
-        if (selected.isEmpty() || !selected.equals(pkg)) return;
+        String selectedPackage = prefs.getString(KEY_PACKAGE, "");
+        String eventPackage = event.getPackageName() == null
+                ? "" : event.getPackageName().toString();
 
-        int type = event.getEventType();
-        if (type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-                && type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-                && type != AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
-                && type != AccessibilityEvent.TYPE_VIEW_SCROLLED) return;
+        if (selectedPackage.isEmpty() || !selectedPackage.equals(eventPackage)) return;
+        if (!isUsefulEvent(event.getEventType())) return;
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
 
-        AccessibilityNodeInfo triggerNode = findExact(root, FIXED_TRIGGER, true);
-
-        if (triggerNode != null && !waitingForA && !triggerConsumed) {
-            triggerConsumed = true;
-            clickTarget("B", 0);
-        } else if (triggerNode == null && !waitingForA) {
-            triggerConsumed = false;
-        }
-
+        boolean found15 = containsExactText(root, FIXED_TRIGGER);
         root.recycle();
+
+        // Feed only the exact countdown observation to the state machine.
+        // Non-15 observations release the latch so a later 15 starts a new cycle.
+        engine.observeCountdown(found15 ? FIXED_TRIGGER : "");
     }
 
-    @Override public void onInterrupt() {
-        stopAutomation();
+    private boolean isUsefulEvent(int type) {
+        return type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                || type == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                || type == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
+                || type == AccessibilityEvent.TYPE_VIEW_SCROLLED
+                || type == AccessibilityEvent.TYPE_VIEW_CLICKED;
     }
 
-    @Override public void onDestroy() {
-        handler.removeCallbacksAndMessages(null);
-        removeAllOverlays();
-        super.onDestroy();
+    @Override
+    public void onTargetBRequired() {
+        if (!isAutomationActive() || waitingForTargetAClick) return;
+        clickTarget("B", 0);
     }
 
-    private boolean isActive() {
+    @Override
+    public void onTargetARequired() {
+        // The engine enters WAITING_FOR_A when B is requested. This callback is
+        // intentionally unused; A is scheduled only after a successful B click.
+    }
+
+    @Override
+    public void onCycleCompleted() {
+        waitingForTargetAClick = false;
+        targetARunnable = null;
+        message("Target A clicked. Cycle complete. Waiting for the next 15.");
+    }
+
+    private boolean isAutomationActive() {
         return prefs != null && prefs.getBoolean(KEY_ACTIVE, false);
     }
 
     private void clickTarget(String target, int attempt) {
-        if (!isActive()) return;
+        if (!isAutomationActive()) return;
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
         AccessibilityNodeInfo node = null;
 
         if (root != null) {
-            String configured = target.equals("A") ? "Target A" : "Target B";
-            node = findExact(root, normalize(configured), true);
-            if (node == null) {
-                node = findExact(root, target.equals("A") ? "target_a" : "target_b", true);
+            node = findClickableTarget(root, target);
+            if (node != null) {
+                boolean clicked = clickNodeAndRelease(node);
+                root.recycle();
+
+                if (clicked) {
+                    handleSuccessfulClick(target);
+                    return;
+                }
+            } else {
+                root.recycle();
             }
         }
 
-        if (node != null) {
-            boolean ok = clickNode(node);
-            node.recycle();
-            root.recycle();
-            if (ok) {
-                afterClick(target);
-                return;
-            }
-        } else if (root != null) {
-            root.recycle();
-        }
-
-        Point p = configuredPoint(target);
-        if (p.x >= 0 && p.y >= 0) {
-            tap(p.x, p.y, target);
+        Point point = configuredPoint(target);
+        if (point.x >= 0 && point.y >= 0) {
+            dispatchCoordinateTap(point.x, point.y, target, attempt);
             return;
         }
 
-        if (attempt + 1 < MAX_ATTEMPTS) {
-            handler.postDelayed(() -> clickTarget(target, attempt + 1), RETRY_DELAY_MS);
-        } else {
-            waitingForA = false;
-            message("Target " + target + " not configured. Use CALIBRATE TARGET " + target + ".");
-        }
+        retryOrFail(target, attempt);
     }
 
-    private boolean clickNode(AccessibilityNodeInfo node) {
-        AccessibilityNodeInfo current = node;
-        while (current != null) {
-            if (current.isClickable()
-                    && current.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true;
-            AccessibilityNodeInfo parent = current.getParent();
-            if (current != node) current.recycle();
-            current = parent;
-        }
-        return false;
+    private AccessibilityNodeInfo findClickableTarget(
+            AccessibilityNodeInfo root, String target) {
+        String title = target.equals("A") ? "target a" : "target b";
+        String id = target.equals("A") ? "target_a" : "target_b";
+
+        return findNode(root, title, id);
     }
 
-    private void afterClick(String target) {
-        if ("B".equals(target)) {
-            waitingForA = true;
-            handler.removeCallbacks(secondClick);
-            handler.postDelayed(secondClick, SECOND_DELAY_MS);
-            message("Target B clicked. Target A will be clicked after 22 seconds.");
-        } else {
-            waitingForA = false;
-            message("Target A clicked. Automation cycle complete.");
-        }
-    }
-
-    private void tap(int x, int y, String target) {
-        Path path = new Path();
-        path.moveTo(x, y);
-        GestureDescription gesture = new GestureDescription.Builder()
-                .addStroke(new GestureDescription.StrokeDescription(path, 0, 80))
-                .build();
-
-        dispatchGesture(gesture, new GestureResultCallback() {
-            @Override public void onCompleted(GestureDescription g) {
-                afterClick(target);
-            }
-
-            @Override public void onCancelled(GestureDescription g) {
-                if ("A".equals(target)) {
-                    waitingForA = false;
-                } else if (isActive()) {
-                    handler.postDelayed(() -> clickTarget(target, 1), RETRY_DELAY_MS);
-                }
-            }
-        }, handler);
-    }
-
-    private Point configuredPoint(String target) {
-        String xKey = target.equals("A") ? KEY_A_X : KEY_B_X;
-        String yKey = target.equals("A") ? KEY_A_Y : KEY_B_Y;
-        return new Point(prefs.getInt(xKey, -1), prefs.getInt(yKey, -1));
-    }
-
-    private AccessibilityNodeInfo findExact(
-            AccessibilityNodeInfo node, String wanted, boolean description) {
+    private AccessibilityNodeInfo findNode(
+            AccessibilityNodeInfo node, String wantedText, String wantedId) {
         if (node == null) return null;
 
-        CharSequence text = node.getText();
-        if (text != null && normalize(text.toString()).equals(wanted)) return node;
+        String text = node.getText() == null ? "" : node.getText().toString();
+        String description = node.getContentDescription() == null
+                ? "" : node.getContentDescription().toString();
+        String viewId = node.getViewIdResourceName() == null
+                ? "" : node.getViewIdResourceName();
 
-        if (description) {
-            CharSequence d = node.getContentDescription();
-            if (d != null && normalize(d.toString()).equals(wanted)) return node;
+        if (normalize(text).equals(wantedText)
+                || normalize(description).equals(wantedText)
+                || normalize(viewId).equals(wantedId)) {
+            return node;
         }
 
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
-            AccessibilityNodeInfo result = findExact(child, wanted, description);
-            if (result != null) return result;
+            AccessibilityNodeInfo result = findNode(child, wantedText, wantedId);
+            if (result != null) {
+                if (child != result) child.recycle();
+                return result;
+            }
             if (child != null) child.recycle();
         }
         return null;
     }
 
-    private String normalize(String s) {
-        return s == null ? "" : s.trim().replaceAll("\\s+", "").toLowerCase(Locale.US);
+    private boolean containsExactText(AccessibilityNodeInfo node, String wanted) {
+        if (node == null) return false;
+
+        CharSequence text = node.getText();
+        if (text != null && normalize(text.toString()).equals(normalize(wanted))) {
+            return true;
+        }
+
+        CharSequence description = node.getContentDescription();
+        if (description != null
+                && normalize(description.toString()).equals(normalize(wanted))) {
+            return true;
+        }
+
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            boolean found = containsExactText(child, wanted);
+            if (child != null) child.recycle();
+            if (found) return true;
+        }
+        return false;
+    }
+
+    private boolean clickNodeAndRelease(AccessibilityNodeInfo node) {
+        AccessibilityNodeInfo current = node;
+        try {
+            while (current != null) {
+                if (current.isClickable()
+                        && current.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                    return true;
+                }
+
+                AccessibilityNodeInfo parent = current.getParent();
+                if (current != node) current.recycle();
+                current = parent;
+            }
+            return false;
+        } finally {
+            if (current != null && current != node) current.recycle();
+            try {
+                node.recycle();
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private void handleSuccessfulClick(String target) {
+        if ("B".equals(target)) {
+            scheduleTargetA();
+        } else {
+            waitingForTargetAClick = false;
+            engine.onTargetAClicked();
+        }
+    }
+
+    private void scheduleTargetA() {
+        waitingForTargetAClick = true;
+        if (targetARunnable != null) handler.removeCallbacks(targetARunnable);
+
+        message("Target B clicked. Waiting exactly 22 seconds for Target A.");
+
+        targetARunnable = () -> {
+            targetARunnable = null;
+            if (isAutomationActive() && waitingForTargetAClick) {
+                clickTarget("A", 0);
+            }
+        };
+
+        handler.postDelayed(targetARunnable, SECOND_DELAY_MS);
+    }
+
+    private void dispatchCoordinateTap(
+            int x, int y, String target, int attempt) {
+        if (!isAutomationActive()) return;
+
+        Path path = new Path();
+        path.moveTo(x, y);
+
+        GestureDescription gesture = new GestureDescription.Builder()
+                .addStroke(new GestureDescription.StrokeDescription(path, 0, 70))
+                .build();
+
+        dispatchGesture(gesture, new GestureResultCallback() {
+            @Override
+            public void onCompleted(GestureDescription description) {
+                handleSuccessfulClick(target);
+            }
+
+            @Override
+            public void onCancelled(GestureDescription description) {
+                retryOrFail(target, attempt);
+            }
+        }, handler);
+    }
+
+    private void retryOrFail(String target, int attempt) {
+        if (attempt + 1 < MAX_ATTEMPTS && isAutomationActive()) {
+            handler.postDelayed(
+                    () -> clickTarget(target, attempt + 1), RETRY_DELAY_MS);
+            return;
+        }
+
+        if ("A".equals(target)) {
+            waitingForTargetAClick = false;
+            message("Target A click failed. Automation remains armed for the current cycle.");
+        } else {
+            message("Target B click failed. Calibrate Target B and try again.");
+        }
+    }
+
+    private Point configuredPoint(String target) {
+        String xKey = target.equals("A") ? KEY_A_X : KEY_B_X;
+        String yKey = target.equals("A") ? KEY_A_Y : KEY_B_Y;
+        return new Point(
+                prefs.getInt(xKey, -1),
+                prefs.getInt(yKey, -1));
+    }
+
+    private String normalize(String value) {
+        return value == null
+                ? ""
+                : value.trim().replaceAll("\\s+", "").toLowerCase(Locale.US);
     }
 
     private void showBubble() {
-        if (bubble != null || wm == null) return;
+        if (bubble != null || windowManager == null) return;
 
-        TextView v = new TextView(this);
-        v.setText("A");
-        v.setTextSize(22);
-        v.setTextColor(Color.WHITE);
-        v.setGravity(Gravity.CENTER);
-        v.setBackgroundColor(Color.rgb(30, 100, 220));
-        v.setOnClickListener(x -> toggleMenu());
-        bubble = v;
+        TextView view = new TextView(this);
+        view.setText("A");
+        view.setTextSize(22);
+        view.setTextColor(Color.WHITE);
+        view.setGravity(Gravity.CENTER);
+        view.setBackgroundColor(Color.rgb(30, 100, 220));
+        view.setOnClickListener(v -> toggleMenu());
+        bubble = view;
 
-        WindowManager.LayoutParams lp = overlayParams(62, 62);
-        lp.gravity = Gravity.TOP | Gravity.END;
-        lp.x = 18;
-        lp.y = 180;
+        WindowManager.LayoutParams params = overlayParams(62, 62);
+        params.gravity = Gravity.TOP | Gravity.END;
+        params.x = 18;
+        params.y = 180;
 
         try {
-            wm.addView(bubble, lp);
+            windowManager.addView(bubble, params);
         } catch (Exception e) {
             bubble = null;
         }
@@ -255,15 +338,17 @@ public class AutomationAccessibilityService extends AccessibilityService {
         box.setPadding(10, 10, 10, 10);
         box.setBackgroundColor(Color.WHITE);
 
-        Button active = button(isActive() ? "STOP" : "ACTIVE");
+        Button active = button(isAutomationActive() ? "STOP" : "ACTIVE");
         active.setOnClickListener(v -> {
-            boolean next = !isActive();
-            prefs.edit().putBoolean(KEY_ACTIVE, next).apply();
-            waitingForA = false;
-            triggerConsumed = false;
-            if (!next) handler.removeCallbacks(secondClick);
+            if (isAutomationActive()) {
+                stopAutomation();
+            } else {
+                prefs.edit().putBoolean(KEY_ACTIVE, true).apply();
+                engine.reset();
+                waitingForTargetAClick = false;
+                message("Automation ACTIVE. Waiting for countdown 15.");
+            }
             removeMenu();
-            message(next ? "Automation ACTIVE." : "Automation STOPPED.");
         });
         box.addView(active);
 
@@ -271,20 +356,21 @@ public class AutomationAccessibilityService extends AccessibilityService {
         stopAll.setOnClickListener(v -> stopAutomation());
         box.addView(stopAll);
 
-        Button a = button("CALIBRATE TARGET A");
-        a.setOnClickListener(v -> beginCalibration("A"));
-        box.addView(a);
+        Button calibrateA = button("CALIBRATE TARGET A");
+        calibrateA.setOnClickListener(v -> beginCalibration("A"));
+        box.addView(calibrateA);
 
-        Button b = button("CALIBRATE TARGET B");
-        b.setOnClickListener(v -> beginCalibration("B"));
-        box.addView(b);
+        Button calibrateB = button("CALIBRATE TARGET B");
+        calibrateB.setOnClickListener(v -> beginCalibration("B"));
+        box.addView(calibrateB);
 
         Button settings = button("ACCESSIBILITY SETTINGS");
         settings.setOnClickListener(v -> {
             try {
                 startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
             removeMenu();
         });
         box.addView(settings);
@@ -294,23 +380,23 @@ public class AutomationAccessibilityService extends AccessibilityService {
         box.addView(close);
 
         menu = box;
-        WindowManager.LayoutParams lp =
+        WindowManager.LayoutParams params =
                 overlayParams(340, WindowManager.LayoutParams.WRAP_CONTENT);
-        lp.gravity = Gravity.TOP | Gravity.END;
-        lp.x = 18;
-        lp.y = 250;
+        params.gravity = Gravity.TOP | Gravity.END;
+        params.x = 18;
+        params.y = 250;
 
         try {
-            wm.addView(menu, lp);
+            windowManager.addView(menu, params);
         } catch (Exception e) {
             menu = null;
         }
     }
 
     private Button button(String label) {
-        Button b = new Button(this);
-        b.setText(label);
-        return b;
+        Button button = new Button(this);
+        button.setText(label);
+        return button;
     }
 
     private WindowManager.LayoutParams overlayParams(int width, int height) {
@@ -326,13 +412,16 @@ public class AutomationAccessibilityService extends AccessibilityService {
         removeMenu();
         calibrationTarget = target;
 
-        TextView v = new TextView(this);
-        v.setText("CALIBRATE TARGET " + target + "\nTap the exact target location once");
-        v.setTextSize(22);
-        v.setTextColor(Color.WHITE);
-        v.setGravity(Gravity.CENTER);
-        v.setBackgroundColor(0x88000000);
-        v.setOnTouchListener((view, event) -> {
+        TextView view = new TextView(this);
+        view.setText(
+                "CALIBRATE TARGET " + target
+                        + "\\nTap the exact target location once");
+        view.setTextSize(22);
+        view.setTextColor(Color.WHITE);
+        view.setGravity(Gravity.CENTER);
+        view.setBackgroundColor(0x88000000);
+
+        view.setOnTouchListener((v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_UP) {
                 int x = Math.round(event.getRawX());
                 int y = Math.round(event.getRawY());
@@ -344,19 +433,19 @@ public class AutomationAccessibilityService extends AccessibilityService {
                 }
 
                 removeCalibration();
-                message("Target " + target + " coordinate saved: " + x + ", " + y);
+                message("Target " + target + " coordinate saved.");
                 return true;
             }
             return true;
         });
 
-        calibration = v;
-        WindowManager.LayoutParams lp = overlayParams(
+        calibration = view;
+        WindowManager.LayoutParams params = overlayParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.MATCH_PARENT);
 
         try {
-            wm.addView(calibration, lp);
+            windowManager.addView(calibration, params);
         } catch (Exception e) {
             calibration = null;
         }
@@ -364,57 +453,91 @@ public class AutomationAccessibilityService extends AccessibilityService {
 
     private void removeMenu() {
         if (menu != null) {
-            try { wm.removeView(menu); } catch (Exception ignored) {}
+            try {
+                windowManager.removeView(menu);
+            } catch (Exception ignored) {
+            }
             menu = null;
         }
     }
 
     private void removeCalibration() {
         if (calibration != null) {
-            try { wm.removeView(calibration); } catch (Exception ignored) {}
+            try {
+                windowManager.removeView(calibration);
+            } catch (Exception ignored) {
+            }
             calibration = null;
         }
     }
 
     private void stopAutomation() {
-        prefs.edit().putBoolean(KEY_ACTIVE, false).apply();
-        waitingForA = false;
-        triggerConsumed = false;
-        handler.removeCallbacks(secondClick);
+        if (prefs != null) {
+            prefs.edit().putBoolean(KEY_ACTIVE, false).apply();
+        }
+
+        waitingForTargetAClick = false;
+        if (targetARunnable != null) {
+            handler.removeCallbacks(targetARunnable);
+            targetARunnable = null;
+        }
+        if (engine != null) engine.reset();
+
         removeMenu();
         message("Automation STOPPED.");
     }
 
     private void message(String text) {
-        if (wm == null) return;
+        if (windowManager == null) return;
 
-        TextView v = new TextView(this);
-        v.setText(text);
-        v.setTextColor(Color.WHITE);
-        v.setTextSize(16);
-        v.setGravity(Gravity.CENTER);
-        v.setPadding(20, 14, 20, 14);
-        v.setBackgroundColor(0xDD222222);
+        TextView view = new TextView(this);
+        view.setText(text);
+        view.setTextColor(Color.WHITE);
+        view.setTextSize(16);
+        view.setGravity(Gravity.CENTER);
+        view.setPadding(20, 14, 20, 14);
+        view.setBackgroundColor(0xDD222222);
 
-        WindowManager.LayoutParams lp = overlayParams(
+        WindowManager.LayoutParams params = overlayParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT);
-        lp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
-        lp.y = 120;
+        params.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        params.y = 120;
 
         try {
-            wm.addView(v, lp);
+            windowManager.addView(view, params);
             handler.postDelayed(() -> {
-                try { wm.removeView(v); } catch (Exception ignored) {}
+                try {
+                    windowManager.removeView(view);
+                } catch (Exception ignored) {
+                }
             }, 2200);
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
+    }
+
+    @Override
+    public void onInterrupt() {
+        stopAutomation();
+    }
+
+    @Override
+    public void onDestroy() {
+        handler.removeCallbacksAndMessages(null);
+        waitingForTargetAClick = false;
+        removeAllOverlays();
+        super.onDestroy();
     }
 
     private void removeAllOverlays() {
         removeMenu();
         removeCalibration();
+
         if (bubble != null) {
-            try { wm.removeView(bubble); } catch (Exception ignored) {}
+            try {
+                windowManager.removeView(bubble);
+            } catch (Exception ignored) {
+            }
             bubble = null;
         }
     }
