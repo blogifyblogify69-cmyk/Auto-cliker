@@ -109,7 +109,7 @@ public final class OverlayController {
     }
 
     private Button button(String label) {
-        Button b = new Button((android.content.Context) host);
+        Button b = new Button(context);
         b.setText(label);
         return b;
     }
@@ -118,7 +118,7 @@ public final class OverlayController {
         removeMenu();
         calibrationTarget = target;
 
-        TextView view = new TextView((android.content.Context) host);
+        TextView view = new TextView(context);
         view.setText("CALIBRATE TARGET " + target + "\nTap the exact target location once");
         view.setTextSize(22);
         view.setTextColor(Color.WHITE);
