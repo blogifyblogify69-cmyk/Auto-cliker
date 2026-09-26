@@ -10,16 +10,26 @@ public final class AutomationController {
         void status(String message);
     }
 
+    interface Scheduler {
+        void postDelayed(Runnable task, long delayMs);
+        void remove(Runnable task);
+    }
+
     private static final long DELAY_MS = 22_000L;
 
     private final Host host;
-    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Scheduler scheduler;
     private AutomationState state = AutomationState.WAITING_FOR_15;
     private boolean fifteenVisible;
     private Runnable delayedA;
 
     public AutomationController(Host host) {
+        this(host, new HandlerScheduler(new Handler(Looper.getMainLooper())));
+    }
+
+    AutomationController(Host host, Scheduler scheduler) {
         this.host = host;
+        this.scheduler = scheduler;
     }
 
     public void reset() {
@@ -68,8 +78,9 @@ public final class AutomationController {
             host.status("22 seconds elapsed. Clicking Target A.");
 
             host.clickTarget("A", () -> {
-                if (state != AutomationState.CLICKING_A) return;
+                if (state != AutomationState.CLICKING_A || !host.isActive()) return;
                 state = AutomationState.WAITING_FOR_15;
+                fifteenVisible = false;
                 host.status("Target A clicked. Waiting for a new 15.");
             }, () -> {
                 state = AutomationState.WAITING_FOR_15;
@@ -77,12 +88,12 @@ public final class AutomationController {
                 host.status("Target A click failed. Waiting for the next 15.");
             });
         };
-        handler.postDelayed(delayedA, DELAY_MS);
+        scheduler.postDelayed(delayedA, DELAY_MS);
     }
 
     private void cancelDelay() {
         if (delayedA != null) {
-            handler.removeCallbacks(delayedA);
+            scheduler.remove(delayedA);
             delayedA = null;
         }
     }
@@ -91,5 +102,21 @@ public final class AutomationController {
         cancelDelay();
         state = AutomationState.WAITING_FOR_15;
         fifteenVisible = false;
+    }
+
+    private static final class HandlerScheduler implements Scheduler {
+        private final Handler handler;
+
+        HandlerScheduler(Handler handler) {
+            this.handler = handler;
+        }
+
+        @Override public void postDelayed(Runnable task, long delayMs) {
+            handler.postDelayed(task, delayMs);
+        }
+
+        @Override public void remove(Runnable task) {
+            handler.removeCallbacks(task);
+        }
     }
 }
