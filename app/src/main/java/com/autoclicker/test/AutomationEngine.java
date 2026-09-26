@@ -1,17 +1,15 @@
 package com.autoclicker.test;
 
 /**
- * Small, UI-independent state machine for the fixed automation rule:
+ * Deterministic state machine for:
  * exact countdown "15" -> Target B -> wait 22 seconds -> Target A.
- *
- * Android AccessibilityService owns the actual screen inspection and taps.
- * This class owns only cycle state, so timing/trigger behavior is deterministic
- * and easy to test without an Android device.
  */
 public final class AutomationEngine {
     public enum State {
         WAITING_FOR_15,
-        WAITING_FOR_A
+        CLICKING_B,
+        WAITING_22_SECONDS,
+        CLICKING_A
     }
 
     public interface Listener {
@@ -37,14 +35,6 @@ public final class AutomationEngine {
         return state;
     }
 
-    public boolean isWaitingForA() {
-        return state == State.WAITING_FOR_A;
-    }
-
-    /**
-     * Feed the current countdown observation.
-     * A new cycle can start only after 15 has disappeared and later appears again.
-     */
     public void observeCountdown(String value) {
         boolean is15 = "15".equals(value);
 
@@ -58,21 +48,40 @@ public final class AutomationEngine {
         }
 
         countdown15Visible = true;
-        state = State.WAITING_FOR_A;
+        state = State.CLICKING_B;
         listener.onTargetBRequired();
     }
 
-    /** Call only after Target B has actually been dispatched successfully. */
     public void onTargetBClicked() {
-        if (state != State.WAITING_FOR_A) return;
-        // The state is already latched so repeated "15" accessibility events
-        // cannot start another B click.
+        if (state == State.CLICKING_B) {
+            state = State.WAITING_22_SECONDS;
+        }
     }
 
-    /** Call after Target A has actually been dispatched successfully. */
+    public void requestTargetA() {
+        if (state == State.WAITING_22_SECONDS) {
+            state = State.CLICKING_A;
+            listener.onTargetARequired();
+        }
+    }
+
     public void onTargetAClicked() {
-        if (state != State.WAITING_FOR_A) return;
+        if (state != State.CLICKING_A) return;
         state = State.WAITING_FOR_15;
         listener.onCycleCompleted();
+    }
+
+    public void onTargetBFailed() {
+        if (state == State.CLICKING_B) {
+            state = State.WAITING_FOR_15;
+            countdown15Visible = false;
+        }
+    }
+
+    public void onTargetAFailed() {
+        if (state == State.CLICKING_A) {
+            state = State.WAITING_FOR_15;
+            countdown15Visible = false;
+        }
     }
 }
