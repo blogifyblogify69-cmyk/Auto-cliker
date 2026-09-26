@@ -3,7 +3,6 @@ package com.autoclicker.test;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
-import android.provider.Settings;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -25,7 +24,6 @@ public final class OverlayController {
     private final WindowManager windowManager;
     private final Host host;
     private final TargetManager targets;
-    private final android.content.SharedPreferences prefs;
 
     private View bubble;
     private View menu;
@@ -35,13 +33,11 @@ public final class OverlayController {
     public OverlayController(Context context,
                              WindowManager windowManager,
                              Host host,
-                             TargetManager targets,
-                             android.content.SharedPreferences prefs) {
+                             TargetManager targets) {
         this.context = context;
         this.windowManager = windowManager;
         this.host = host;
         this.targets = targets;
-        this.prefs = prefs;
     }
 
     public void showBubble() {
@@ -69,7 +65,7 @@ public final class OverlayController {
             return;
         }
 
-        LinearLayout box = new LinearLayout((android.content.Context) host);
+        LinearLayout box = new LinearLayout(context);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(10, 10, 10, 10);
         box.setBackgroundColor(Color.WHITE);
