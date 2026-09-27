@@ -8,6 +8,7 @@ import android.content.IntentFilter;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Build;
+import android.annotation.SuppressLint;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
@@ -81,6 +82,7 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
         startVirtualCountdown();
     }
 
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
     private void registerControllerReceiver() {
         IntentFilter filter = new IntentFilter();
         filter.addAction(ACTION_ACTIVE);
