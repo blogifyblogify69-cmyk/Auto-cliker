@@ -63,8 +63,8 @@ public final class AutomationController {
             scheduleA();
         }, () -> {
             state = AutomationState.WAITING_FOR_15;
-            fifteenVisible = false;
-            host.status("Target B click failed. Waiting for the next 15.");
+            // Keep the gate closed until the current 15 disappears.
+            host.status("Target B click failed. Waiting for 15 to disappear.");
         });
     }
 
@@ -80,12 +80,12 @@ public final class AutomationController {
             host.clickTarget("A", () -> {
                 if (state != AutomationState.CLICKING_A || !host.isActive()) return;
                 state = AutomationState.WAITING_FOR_15;
-                fifteenVisible = false;
-                host.status("Target A clicked. Waiting for a new 15.");
+                // Keep the gate closed until the current 15 disappears.
+                host.status("Target A clicked. Waiting for 15 to disappear.");
             }, () -> {
                 state = AutomationState.WAITING_FOR_15;
-                fifteenVisible = false;
-                host.status("Target A click failed. Waiting for the next 15.");
+                // Keep the gate closed until the current 15 disappears.
+                host.status("Target A click failed. Waiting for 15 to disappear.");
             });
         };
         scheduler.postDelayed(delayedA, DELAY_MS);
