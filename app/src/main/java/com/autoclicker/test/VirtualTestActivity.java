@@ -1,6 +1,10 @@
 package com.autoclicker.test;
 
 import android.app.Activity;
+import android.accessibilityservice.AccessibilityServiceInfo;
+import android.provider.Settings;
+import android.content.ComponentName;
+import android.view.accessibility.AccessibilityManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -160,6 +164,11 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
                 new LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, 85));
 
+        Button accessibility = new Button(this);
+        accessibility.setText("ACCESSIBILITY: CHECK / ENABLE");
+        accessibility.setOnClickListener(v -> openAccessibilitySettings());
+        root.addView(accessibility);
+
         Button activate = new Button(this);
         activate.setText("ACTIVATE LOCALLY");
         activate.setOnClickListener(v -> activate());
@@ -182,6 +191,38 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
         setContentView(root);
         root.requestApplyInsets();
         updateConfig();
+        updateAccessibilityButton(accessibility);
+    }
+
+    private void updateAccessibilityButton(Button button) {
+        button.setText(isAccessibilityServiceEnabled()
+                ? "ACCESSIBILITY: ENABLED"
+                : "ACCESSIBILITY: OFF — TAP TO ENABLE");
+    }
+
+    private boolean isAccessibilityServiceEnabled() {
+        AccessibilityManager manager =
+                (AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE);
+        if (manager == null) return false;
+
+        String expected = new ComponentName(this, TestAccessibilityService.class).flattenToString();
+        for (AccessibilityServiceInfo info :
+                manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)) {
+            if (info.getResolveInfo() == null || info.getResolveInfo().serviceInfo == null) continue;
+            ComponentName component = new ComponentName(
+                    info.getResolveInfo().serviceInfo.packageName,
+                    info.getResolveInfo().serviceInfo.name);
+            if (expected.equals(component.flattenToString())) return true;
+        }
+        return false;
+    }
+
+    private void openAccessibilitySettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+        } catch (Exception ignored) {
+            startActivity(new Intent(Settings.ACTION_SETTINGS));
+        }
     }
 
     private void updateConfig() {
