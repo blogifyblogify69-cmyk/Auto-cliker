@@ -1,10 +1,7 @@
 package com.autoclicker.test;
 
 import android.app.Activity;
-import android.accessibilityservice.AccessibilityServiceInfo;
-import android.provider.Settings;
-import android.content.ComponentName;
-import android.view.accessibility.AccessibilityManager;
+import android.content.SharedPreferences;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -17,6 +14,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
+import android.view.MotionEvent;
 import android.view.WindowInsets;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -33,6 +31,12 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
     private TextView configView;
     private Button targetA;
     private Button targetB;
+    private SharedPreferences targetPrefs;
+    private boolean draggingTarget;
+    private float dragStartX;
+    private float dragStartY;
+    private float startTranslationX;
+    private float startTranslationY;
 
     private AutomationController controller;
     private boolean active;
@@ -81,6 +85,7 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         controller = new AutomationController(this);
+        targetPrefs = getSharedPreferences("target_positions", MODE_PRIVATE);
         buildUi();
         registerControllerReceiver();
         startVirtualCountdown();
@@ -152,6 +157,7 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
         targetA.setText("TARGET A");
         targetA.setTextSize(20);
         targetA.setOnClickListener(v -> status("Target A clicked (QA test)."));
+        makeTargetDraggable(targetA, "target_a");
         root.addView(targetA,
                 new LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, 85));
@@ -160,14 +166,21 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
         targetB.setText("TARGET B");
         targetB.setTextSize(20);
         targetB.setOnClickListener(v -> status("Target B clicked (QA test)."));
+        makeTargetDraggable(targetB, "target_b");
         root.addView(targetB,
                 new LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, 85));
 
-        Button accessibility = new Button(this);
-        accessibility.setText("ACCESSIBILITY: CHECK / ENABLE");
-        accessibility.setOnClickListener(v -> openAccessibilitySettings());
-        root.addView(accessibility);
+        Button positions = new Button(this);
+        positions.setText("RESET TARGET POSITIONS");
+        positions.setOnClickListener(v -> resetTargetPositions());
+        root.addView(positions);
+
+        TextView dragHint = new TextView(this);
+        dragHint.setText("Drag TARGET A / TARGET B to the position you want. Positions are saved on this device.");
+        dragHint.setTextSize(13);
+        dragHint.setPadding(8, 8, 8, 18);
+        root.addView(dragHint);
 
         Button activate = new Button(this);
         activate.setText("ACTIVATE LOCALLY");
@@ -191,38 +204,66 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
         setContentView(root);
         root.requestApplyInsets();
         updateConfig();
-        updateAccessibilityButton(accessibility);
+        restoreTargetPositions();
     }
 
-    private void updateAccessibilityButton(Button button) {
-        button.setText(isAccessibilityServiceEnabled()
-                ? "ACCESSIBILITY: ENABLED"
-                : "ACCESSIBILITY: OFF — TAP TO ENABLE");
+    private void makeTargetDraggable(Button target, String key) {
+        target.setOnTouchListener((v, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    draggingTarget = false;
+                    dragStartX = event.getRawX();
+                    dragStartY = event.getRawY();
+                    startTranslationX = v.getTranslationX();
+                    startTranslationY = v.getTranslationY();
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    float dx = event.getRawX() - dragStartX;
+                    float dy = event.getRawY() - dragStartY;
+                    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) draggingTarget = true;
+                    if (draggingTarget) {
+                        v.setTranslationX(startTranslationX + dx);
+                        v.setTranslationY(startTranslationY + dy);
+                    }
+                    return true;
+                case MotionEvent.ACTION_UP:
+                    if (draggingTarget) {
+                        saveTargetPosition(target, key);
+                    } else {
+                        v.performClick();
+                    }
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    return true;
+                default:
+                    return false;
+            }
+        });
     }
 
-    private boolean isAccessibilityServiceEnabled() {
-        AccessibilityManager manager =
-                (AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE);
-        if (manager == null) return false;
-
-        String expected = new ComponentName(this, TestAccessibilityService.class).flattenToString();
-        for (AccessibilityServiceInfo info :
-                manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)) {
-            if (info.getResolveInfo() == null || info.getResolveInfo().serviceInfo == null) continue;
-            ComponentName component = new ComponentName(
-                    info.getResolveInfo().serviceInfo.packageName,
-                    info.getResolveInfo().serviceInfo.name);
-            if (expected.equals(component.flattenToString())) return true;
-        }
-        return false;
+    private void saveTargetPosition(View target, String key) {
+        targetPrefs.edit()
+                .putFloat(key + "_x", target.getTranslationX())
+                .putFloat(key + "_y", target.getTranslationY())
+                .apply();
+        status("Saved " + key.replace("_", " ").toUpperCase() + " position.");
     }
 
-    private void openAccessibilitySettings() {
-        try {
-            startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
-        } catch (Exception ignored) {
-            startActivity(new Intent(Settings.ACTION_SETTINGS));
-        }
+    private void restoreTargetPositions() {
+        if (targetPrefs == null) return;
+        targetA.setTranslationX(targetPrefs.getFloat("target_a_x", 0f));
+        targetA.setTranslationY(targetPrefs.getFloat("target_a_y", 0f));
+        targetB.setTranslationX(targetPrefs.getFloat("target_b_x", 0f));
+        targetB.setTranslationY(targetPrefs.getFloat("target_b_y", 0f));
+    }
+
+    private void resetTargetPositions() {
+        targetPrefs.edit().clear().apply();
+        targetA.setTranslationX(0f);
+        targetA.setTranslationY(0f);
+        targetB.setTranslationX(0f);
+        targetB.setTranslationY(0f);
+        status("Target A and B positions reset.");
     }
 
     private void updateConfig() {
