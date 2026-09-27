@@ -149,13 +149,13 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
         return active;
     }
 
-    @Override public void activate() {
+    public void activate() {
         active = true;
         controller.reset();
         status("ACTIVE — waiting for exactly 15.");
     }
 
-    @Override public void stop() {
+    public void stop() {
         active = false;
         controller.stop();
         status("AUTOMATION STOPPED.");
