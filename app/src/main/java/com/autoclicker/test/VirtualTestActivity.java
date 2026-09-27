@@ -1,6 +1,10 @@
 package com.autoclicker.test;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Build;
@@ -14,10 +18,14 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 public class VirtualTestActivity extends Activity implements AutomationController.Host {
+    private static final String ACTION_ACTIVE = "com.floatinger.demo.ACTION_ACTIVE";
+    private static final String ACTION_STOP = "com.floatinger.demo.ACTION_STOP";
+
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     private TextView countdownView;
     private TextView stateView;
+    private TextView configView;
     private Button targetA;
     private Button targetB;
 
@@ -25,6 +33,29 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
     private boolean active;
     private int countdown = 30;
     private boolean countdownRunning;
+    private String targetAValue = "1.50";
+    private int triggerValue = 15;
+    private int delaySeconds = 22;
+
+    private final BroadcastReceiver controllerReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (intent == null) return;
+
+            String a = intent.getStringExtra("target_a");
+            if (a != null && !a.trim().isEmpty()) targetAValue = a.trim();
+
+            triggerValue = clamp(intent.getIntExtra("trigger", 15), 1, 999);
+            delaySeconds = clamp(intent.getIntExtra("delay", 22), 0, 3600);
+            controller.configure(triggerValue, delaySeconds);
+
+            if (ACTION_ACTIVE.equals(intent.getAction())) {
+                activate();
+            } else if (ACTION_STOP.equals(intent.getAction())) {
+                stop();
+            }
+            updateConfig();
+        }
+    };
 
     private final Runnable countdownTick = new Runnable() {
         @Override public void run() {
@@ -33,7 +64,7 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
             countdownView.setText(String.valueOf(countdown));
 
             if (active) {
-                controller.observe(countdown == 15);
+                controller.observe(countdown == triggerValue);
             }
 
             countdown--;
@@ -46,7 +77,20 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
         super.onCreate(state);
         controller = new AutomationController(this);
         buildUi();
+        registerControllerReceiver();
         startVirtualCountdown();
+    }
+
+    private void registerControllerReceiver() {
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(ACTION_ACTIVE);
+        filter.addAction(ACTION_STOP);
+
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(controllerReceiver, filter, Context.RECEIVER_EXPORTED);
+        } else {
+            registerReceiver(controllerReceiver, filter);
+        }
     }
 
     private void buildUi() {
@@ -54,11 +98,13 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
         root.setPadding(28, 28, 28, 28);
+        root.setBackgroundColor(Color.rgb(245, 245, 245));
         root.setOnApplyWindowInsetsListener((View v, WindowInsets insets) -> {
             int top;
             int bottom;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
+                android.graphics.Insets bars =
+                        insets.getInsets(WindowInsets.Type.systemBars());
                 top = bars.top;
                 bottom = bars.bottom;
             } else {
@@ -70,19 +116,16 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
         });
 
         TextView title = new TextView(this);
-        title.setText("AUTO CLICKER — VIRTUAL TEST");
+        title.setText("VIRTUAL QA TEST APP");
         title.setTextSize(22);
         title.setTextColor(Color.rgb(21, 101, 192));
         title.setGravity(Gravity.CENTER);
         root.addView(title);
 
-        TextView info = new TextView(this);
-        info.setText("Self-contained test UI. No screen inspection, overlay, "
-                + "AccessibilityService, or special permission is used.\n\n"
-                + "Rule: exactly 15 → Target B → wait exactly 22 seconds → Target A.");
-        info.setTextSize(15);
-        info.setPadding(8, 20, 8, 20);
-        root.addView(info);
+        configView = new TextView(this);
+        configView.setTextSize(15);
+        configView.setPadding(8, 18, 8, 18);
+        root.addView(configView);
 
         countdownView = new TextView(this);
         countdownView.setText("30");
@@ -102,7 +145,7 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
         targetA = new Button(this);
         targetA.setText("TARGET A");
         targetA.setTextSize(20);
-        targetA.setOnClickListener(v -> status("Target A clicked by automation."));
+        targetA.setOnClickListener(v -> status("Target A clicked (QA test)."));
         root.addView(targetA,
                 new LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, 85));
@@ -110,18 +153,18 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
         targetB = new Button(this);
         targetB.setText("TARGET B");
         targetB.setTextSize(20);
-        targetB.setOnClickListener(v -> status("Target B clicked by automation."));
+        targetB.setOnClickListener(v -> status("Target B clicked (QA test)."));
         root.addView(targetB,
                 new LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, 85));
 
         Button activate = new Button(this);
-        activate.setText("ACTIVATE AUTOMATION");
+        activate.setText("ACTIVATE LOCALLY");
         activate.setOnClickListener(v -> activate());
         root.addView(activate);
 
         Button stop = new Button(this);
-        stop.setText("STOP AUTOMATION");
+        stop.setText("STOP LOCALLY");
         stop.setOnClickListener(v -> stop());
         root.addView(stop);
 
@@ -130,12 +173,27 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
         reset.setOnClickListener(v -> {
             countdown = 30;
             controller.reset();
-            status("Countdown reset. Waiting for exactly 15.");
+            status("Countdown reset. Waiting for " + triggerValue + ".");
         });
         root.addView(reset);
 
         setContentView(root);
         root.requestApplyInsets();
+        updateConfig();
+    }
+
+    private void updateConfig() {
+        if (configView == null) return;
+        configView.setText(
+                "Floatinger connection: TEST MODE\n" +
+                "Target A value: " + targetAValue + "\n" +
+                "Trigger: " + triggerValue + "\n" +
+                "Delay after B: " + delaySeconds + " seconds");
+        if (targetA != null) targetA.setText("TARGET A (" + targetAValue + ")");
+    }
+
+    private int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private void startVirtualCountdown() {
@@ -152,7 +210,7 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
     public void activate() {
         active = true;
         controller.reset();
-        status("ACTIVE — waiting for exactly 15.");
+        status("ACTIVE — waiting for exactly " + triggerValue + ".");
     }
 
     public void stop() {
@@ -183,6 +241,7 @@ public class VirtualTestActivity extends Activity implements AutomationControlle
     }
 
     @Override protected void onDestroy() {
+        try { unregisterReceiver(controllerReceiver); } catch (Exception ignored) {}
         countdownRunning = false;
         handler.removeCallbacksAndMessages(null);
         controller.stop();
