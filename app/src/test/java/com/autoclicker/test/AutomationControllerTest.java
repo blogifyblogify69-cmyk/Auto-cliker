@@ -34,7 +34,7 @@ public class AutomationControllerTest {
     }
 
     @Test
-    public void twentyTwoSecondsLaterClicksAAndWaitsForNew15() {
+    public void twentyTwoSecondsLaterClicksATwiceAndWaitsForNew15() {
         FakeHost host = new FakeHost();
         FakeScheduler scheduler = new FakeScheduler();
         AutomationController controller = new AutomationController(host, scheduler);
@@ -45,6 +45,10 @@ public class AutomationControllerTest {
 
         assertEquals(1, host.bClicks);
         assertEquals(1, host.aClicks);
+        assertEquals(AutomationState.CLICKING_A, controller.getState());
+
+        host.completeASuccess();
+        assertEquals(2, host.aClicks);
         assertEquals(AutomationState.CLICKING_A, controller.getState());
 
         host.completeASuccess();
