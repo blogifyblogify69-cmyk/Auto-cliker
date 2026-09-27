@@ -16,12 +16,14 @@ public final class AutomationController {
     }
 
     private static final long DELAY_MS = 22_000L;
+    private static final int TARGET_A_CLICKS = 2;
 
     private final Host host;
     private final Scheduler scheduler;
     private AutomationState state = AutomationState.WAITING_FOR_15;
     private boolean fifteenVisible;
     private Runnable delayedA;
+    private int completedAClicks;
 
     public AutomationController(Host host) {
         this(host, new HandlerScheduler(new Handler(Looper.getMainLooper())));
@@ -36,6 +38,7 @@ public final class AutomationController {
         cancelDelay();
         state = AutomationState.WAITING_FOR_15;
         fifteenVisible = false;
+        completedAClicks = 0;
     }
 
     public AutomationState getState() {
@@ -63,7 +66,6 @@ public final class AutomationController {
             scheduleA();
         }, () -> {
             state = AutomationState.WAITING_FOR_15;
-            // Keep the gate closed until the current 15 disappears.
             host.status("Target B click failed. Waiting for 15 to disappear.");
         });
     }
@@ -75,20 +77,32 @@ public final class AutomationController {
             if (!host.isActive() || state != AutomationState.WAITING_22_SECONDS) return;
 
             state = AutomationState.CLICKING_A;
-            host.status("22 seconds elapsed. Clicking Target A.");
-
-            host.clickTarget("A", () -> {
-                if (state != AutomationState.CLICKING_A || !host.isActive()) return;
-                state = AutomationState.WAITING_FOR_15;
-                // Keep the gate closed until the current 15 disappears.
-                host.status("Target A clicked. Waiting for 15 to disappear.");
-            }, () -> {
-                state = AutomationState.WAITING_FOR_15;
-                // Keep the gate closed until the current 15 disappears.
-                host.status("Target A click failed. Waiting for 15 to disappear.");
-            });
+            completedAClicks = 0;
+            host.status("22 seconds elapsed. Clicking Target A twice.");
+            clickNextA();
         };
         scheduler.postDelayed(delayedA, DELAY_MS);
+    }
+
+    private void clickNextA() {
+        if (!host.isActive() || state != AutomationState.CLICKING_A) return;
+
+        final int clickNumber = completedAClicks + 1;
+        host.clickTarget("A", () -> {
+            if (state != AutomationState.CLICKING_A || !host.isActive()) return;
+
+            completedAClicks++;
+            if (completedAClicks < TARGET_A_CLICKS) {
+                host.status("Target A click " + clickNumber + " complete. Performing click 2.");
+                clickNextA();
+            } else {
+                state = AutomationState.WAITING_FOR_15;
+                host.status("Target A clicked twice. Waiting for 15 to disappear.");
+            }
+        }, () -> {
+            state = AutomationState.WAITING_FOR_15;
+            host.status("Target A click " + clickNumber + " failed. Waiting for 15 to disappear.");
+        });
     }
 
     private void cancelDelay() {
@@ -102,6 +116,7 @@ public final class AutomationController {
         cancelDelay();
         state = AutomationState.WAITING_FOR_15;
         fifteenVisible = false;
+        completedAClicks = 0;
     }
 
     private static final class HandlerScheduler implements Scheduler {
