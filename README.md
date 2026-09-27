@@ -1,101 +1,42 @@
-# Auto Clicker Test — Virtual Test APK
+# Auto Clicker Test — Virtual QA Host
 
-This repository contains a **self-contained Android automation test environment**.
+This repository contains a self-contained Android QA test host for the two-APK Floatinger prototype.
 
-The current build does **not** inspect another app, capture the screen, draw overlays, use AccessibilityService, or request special Android permissions.
+## Two-APK test architecture
 
-## Current automation flow
+- Floatinger (com.floatinger.demo) provides the user settings and floating controller.
+- Auto-cliker (com.autoclicker.virtualtest) provides the built-in Virtual QA Test App.
 
-The APK contains its own virtual countdown and its own Target A / Target B controls.
+The Floatinger controller can send ACTIVE / STOP commands to this test host. The test host owns the countdown and the test buttons.
 
-1. Open **Auto Clicker Test**.
-2. Tap **ACTIVATE AUTOMATION**.
-3. The virtual countdown runs from 30 down to 0 and repeats.
-4. When the countdown is **exactly 15**, the controller clicks **Target B**.
-5. The controller waits **22 seconds**.
-6. The controller clicks **Target A**.
-7. It returns to waiting for the next 15.
-8. A repeated observation of the same visible 15 cannot trigger another cycle. The value must become something other than 15 and later become 15 again.
-9. **STOP AUTOMATION** cancels the active cycle, including a pending Target A click.
-10. **RESET COUNTDOWN** resets the virtual countdown to 30 and resets the automation state.
+This build does not inspect, clone, or automatically click another installed application.
 
-This is intentionally a deterministic test environment. It is not a cross-app clicker.
+## Test flow
 
-## Project structure
+1. Open Floatinger and configure Target A, trigger value, and delay.
+2. Grant Floatinger the Android Display over other apps permission.
+3. Show the floating controller.
+4. Open this Virtual QA Test App.
+5. Tap ACTIVE on the Floatinger bubble.
+6. The test countdown runs from 30 down to 0 and repeats.
+7. When the countdown reaches the configured trigger (default 15), the test host clicks its own Target B.
+8. It waits the configured delay (default 22 seconds).
+9. It clicks its own Target A twice.
+10. The same visible trigger value cannot retrigger until the countdown changes away from it.
+11. STOP cancels the pending delay.
 
-- `MainActivity.java` — launcher entry point; opens the virtual test activity.
-- `VirtualTestActivity.java` — owns the virtual countdown, Target A/B buttons, and user controls.
-- `AutomationController.java` — deterministic state machine for 15 → B → 22 seconds → A.
-- `AutomationState.java` — controller states.
-- `AutomationControllerTest.java` — JVM tests for repeated-15 protection, 22-second scheduling, Target A completion, STOP cancellation, and failed-click recovery.
-- `AndroidManifest.xml` — contains only the two activities; no permissions or services.
-- `android.yml` — builds, lints, signs, and inspects the debug APK.
+## Why this is a test host
 
-## Permissions
+The target controls belong to this APK. This lets the two-APK communication and state machine be tested without controlling a third-party application.
 
-The current manifest intentionally declares **no Android permissions**.
+Android accessibility APIs can retrieve accessible window content and perform gestures when the user explicitly enables an accessibility service, but that capability is not included in this QA build.
 
-There is no:
+## Build
 
-- AccessibilityService
-- `BIND_ACCESSIBILITY_SERVICE`
-- `SYSTEM_ALERT_WINDOW`
-- screen capture
-- foreground service
-- external-app inspection
-- special permission setup
+compileSdk 35, targetSdk 35, minSdk 26, applicationId com.autoclicker.virtualtest, versionName 5.4-qa, Java 17, Gradle 8.9.
 
-The CI build also checks the generated APK for stale accessibility/overlay classes and restricted permissions.
+The debug build requires no personal release keystore.
 
-## Build configuration
+## Security note
 
-- compileSdk: 35
-- targetSdk: 35
-- minSdk: 26
-- applicationId: `com.autoclicker.virtualtest`
-- versionName: `5.2`
-- Android Gradle Plugin: 8.7.3
-- Gradle: 8.9
-- Java: 17
-
-AGP 8.7 supports API 35 with Gradle 8.9 and JDK 17.
-
-The project intentionally produces a debug APK, so no personal release keystore or signing password is required.
-
-## Android 15 / API 35 UI handling
-
-Because the app targets SDK 35, Android 15 enforces edge-to-edge behavior. The virtual activity applies system-bar insets to keep its controls tappable and visible.
-
-## CI verification
-
-Every push to `main` and every manual workflow run performs:
-
-1. Gradle/JDK/SDK checks.
-2. JVM unit tests.
-3. Android lint.
-4. Clean debug APK build.
-5. APK signing verification.
-6. APK package/version/launcher verification.
-7. Permission inspection.
-8. Stale accessibility/overlay class inspection.
-9. APK artifact upload.
-
-Artifact name:
-
-`AutoClicker-Portable-Virtual-v5.2`
-
-## Installation
-
-After a successful GitHub Actions build, download the APK artifact and install it on an Android device.
-
-For ADB installation:
-
-~~~text
-adb install app-debug.apk
-~~~
-
-If an older build with a different package ID is installed, it can coexist with this virtual-test package because the current package ID is `com.autoclicker.virtualtest`.
-
-## Important limitation
-
-This version deliberately does **not** automate another installed application. Its targets and countdown are internal controls owned by this APK. A cross-app implementation would require Android-supported mechanisms such as UI Automator or an appropriate accessibility/test framework and is outside this virtual build.
+The test receiver is intentionally exported so the separate Floatinger APK can communicate with this QA host. The host is a dedicated test package and should not be reused as a receiver for sensitive operations.
