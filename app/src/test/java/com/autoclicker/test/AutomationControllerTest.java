@@ -111,6 +111,11 @@ public class AutomationControllerTest {
         }
 
         @Override
+        public void status(String message) {
+            // Test host intentionally records no UI status.
+        }
+
+        @Override
         public void clickTarget(String target, Runnable success, Runnable failure) {
             if ("B".equals(target)) {
                 bClicks++;
