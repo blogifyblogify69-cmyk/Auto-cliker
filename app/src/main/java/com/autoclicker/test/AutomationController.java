@@ -8,6 +8,8 @@ public final class AutomationController {
         boolean isActive();
         void clickTarget(String target, Runnable success, Runnable failure);
         void status(String message);
+        void activate();
+        void stop();
     }
 
     interface Scheduler {
